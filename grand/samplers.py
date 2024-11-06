@@ -1341,9 +1341,11 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             # Insert or delete a water, based on random choice
             if np.random.randint(2) == 1:
                 # Attempt to insert a water
+                self.logger.info("Insertion")
                 self.insertionMove()
             else:
                 # Attempt to delete a water
+                self.logger.info("Deletion")
                 self.deletionMove()
             self.n_moves += 1
             self.Ns.append(self.N)
