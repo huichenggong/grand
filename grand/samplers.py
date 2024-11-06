@@ -487,7 +487,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
                                                                                                          acc_rate,
                                                                                                          self.N,
                                                                                                          mean_N)
-        print(msg)
+        # print(msg)
         self.logger.info(msg)
 
         # Write to the file describing which waters are ghosts through the trajectory
@@ -1019,7 +1019,7 @@ class GCMCSphereSampler(BaseGrandCanonicalMonteCarloSampler):
                                                                                                          acc_rate,
                                                                                                          self.N,
                                                                                                          mean_N)
-        print(msg)
+        # print(msg)
         self.logger.info(msg)
 
         # Write to the file describing which waters are ghosts through the trajectory
