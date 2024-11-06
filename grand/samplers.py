@@ -92,8 +92,8 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             elif "Barostat" in force.__class__.__name__:
                 self.raiseError("GCMC must be used at constant volume - {} cannot be used!".format(force.__class__.__name__))
             elif force.__class__.__name__ == "CustomNonbondedForce":
-                self.force_field_name = "Charmm"
                 self.custom_nb_force = force
+                self.force_field_name = "Charmm"
 
         # Need to create a customised force to handle softcore steric interactions of water molecules
         # This should prevent any 0/0 energy evaluations
@@ -247,16 +247,27 @@ class BaseGrandCanonicalMonteCarloSampler(object):
                 if not np.isclose(epsilon._value, 0.0):
                     raise ValueError("epsilon value is not zero in NonbondedForce, this is not supported in Charmm")
             # safety check 2, Energy expression is
-            self.logger.info(f"The energy expression in the given CustonNonbondedForce in the system is {self.custom_nb_force.getEnergyFunction()}")
+            energy_old = self.custom_nb_force.getEnergyFunction()
+            self.logger.info(f"The energy expression in the given CustonNonbondedForce in the system is {energy_old}")
 
             # Introduced lambda parameters and soft-core
-            energy_expression = (
-                "lambda * (a/r6_eff)^2-b/r6_eff;"
-                "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
-                "a = acoef(type1, type2);"  # a = 2 * epsilon^0.5 * sigma^6
-                "b = bcoef(type1, type2);"  # b = sigma^6
-                "lambda = lambda1*lambda2"
-            )
+            if energy_old == '(a/r6)^2-b/r6; r6=r^6;a=acoef(type1, type2);b=bcoef(type1, type2)':
+                energy_expression = (
+                    "lambda * ( (a/r6_eff)^2-b/r6_eff );"
+                    "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "a = acoef(type1, type2);"  # a = 2 * epsilon^0.5 * sigma^6
+                    "b = bcoef(type1, type2);"  # b = sigma^6
+                    "lambda = lambda1*lambda2"
+                )
+            elif energy_old == 'acoef(type1, type2)/r^12 - bcoef(type1, type2)/r^6;':
+                energy_expression = (
+                    "lambda * (acoef(type1, type2)/r6_eff^2 - bcoef(type1, type2)/r6_eff);"
+                    "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "lambda = lambda1*lambda2"
+                )
+            else:
+                raise ValueError(f"{energy_old} This energy expression in CustonNonbondedForce can not be recognised. "
+                                 f"Currently, grand only supports the system that is prepared by CharmmPsfFile.CreateSystem() or ForceField.createSystem()")
             self.custom_nb_force.setEnergyFunction(energy_expression)
             self.custom_nb_force.addPerParticleParameter("lambda")
             self.custom_nb_force.addGlobalParameter('soft_alpha', 1)
