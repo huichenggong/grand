@@ -243,7 +243,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             # safety check 1, all eqsilon values are zero in NonbondedForce
             for atom_idx in range(self.nonbonded_force.getNumParticles()):
                 # Get atom parameters
-                [charge, sigma, epsilon] = self.nonbonded_force.getParticleParameters(atom_idx)
+                charge, sigma, epsilon = self.nonbonded_force.getParticleParameters(atom_idx)
                 if not np.isclose(epsilon._value, 0.0):
                     raise ValueError("epsilon value is not zero in NonbondedForce, this is not supported in Charmm")
             # safety check 2, Energy expression is
@@ -254,15 +254,19 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             if energy_old == '(a/r6)^2-b/r6; r6=r^6;a=acoef(type1, type2);b=bcoef(type1, type2)':
                 energy_expression = (
                     "lambda * ( (a/r6_eff)^2-b/r6_eff );"
-                    "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "r6_eff = soft_alpha * sigma6 * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "sigma6 = a^2 / b;"         # sigma^6
                     "a = acoef(type1, type2);"  # a = 2 * epsilon^0.5 * sigma^6
-                    "b = bcoef(type1, type2);"  # b = sigma^6
+                    "b = bcoef(type1, type2);"  # b = 4 * epsilon * sigma^6
                     "lambda = lambda1*lambda2"
                 )
             elif energy_old == 'acoef(type1, type2)/r^12 - bcoef(type1, type2)/r^6;':
                 energy_expression = (
-                    "lambda * (acoef(type1, type2)/r6_eff^2 - bcoef(type1, type2)/r6_eff);"
-                    "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "lambda * (a/r6_eff^2 - b/r6_eff);"
+                    "r6_eff = soft_alpha * sigma6 * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                    "sigma6 = a / b;"          # sigma^6
+                    "a = acoef(type1, type2);" # a = 4 * epsilon * sigma^12
+                    "b = bcoef(type1, type2);" # b = 4 * epsilon * sigma^6
                     "lambda = lambda1*lambda2"
                 )
             else:
