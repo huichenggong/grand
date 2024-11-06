@@ -17,8 +17,7 @@ import logging
 import parmed
 import math
 from copy import deepcopy
-from simtk import unit
-from simtk import openmm
+from openmm import unit, openmm
 from openmmtools.integrators import NonequilibriumLangevinIntegrator
 
 from grand.utils import random_rotation_matrix
@@ -81,7 +80,10 @@ class BaseGrandCanonicalMonteCarloSampler(object):
 
         self.logger.info("kT = {}".format(self.kT.in_units_of(unit.kilocalorie_per_mole)))
 
-        # Find NonbondedForce - needs to be updated to switch waters on/off
+        # In Amber,  NonbondedForce handles both electrostatics and vdW
+        # In Charmm, NonbondedForce handles electrostatics, and CustomNonbondedForce handles vdW
+        self.force_field_name = "Amber"
+        self.custom_nb_force = None
         for f in range(system.getNumForces()):
             force = system.getForce(f)
             if force.__class__.__name__ == "NonbondedForce":
@@ -89,7 +91,15 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             # Flag an error if not simulating at constant volume
             elif "Barostat" in force.__class__.__name__:
                 self.raiseError("GCMC must be used at constant volume - {} cannot be used!".format(force.__class__.__name__))
-        
+            elif force.__class__.__name__ == "CustomNonbondedForce":
+                self.force_field_name = "Charmm"
+                self.custom_nb_force = force
+
+        # Need to create a customised force to handle softcore steric interactions of water molecules
+        # This should prevent any 0/0 energy evaluations
+        self.logger.info(f"Force field detected as {self.force_field_name}")
+        self.customiseForces()
+
         # Set GCMC-specific variables
         self.N = 0  # Initialise N as zero
         self.Ns = []  # Store all observed values of N
@@ -104,11 +114,6 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         self.water_resids = self.getWaterResids("HOH")  # All waters
         # Assign each water a status: 0: ghost water, 1: GCMC water, 2: Water not under GCMC tracking (out of sphere)
         self.water_status = {x: 1 for x in self.water_resids} # Initially assign all to 1
-
-        # Need to create a customised force to handle softcore steric interactions of water molecules
-        # This should prevent any 0/0 energy evaluations
-        self.custom_nb_force = None
-        self.customiseForces()
 
         # Need to open the file to store ghost water IDs
         self.ghost_file = ghostFile
@@ -154,83 +159,112 @@ class BaseGrandCanonicalMonteCarloSampler(object):
 
     def customiseForces(self):
         """
-        Create a CustomNonbondedForce to handle water-water interactions and modify the original NonbondedForce
-        to ignore water interactions
+        :param ff_name: str, either "Amber" or "Charmm"
+        In Amber,  NonbondedForce handles both electrostatics and vdW. This function will remove vdW from NonbondedForce
+        and create a CustomNonbondedForce to handle vdW, so that the interaction can be switched off for certain water.
+        In Charmm, NonbondedForce handles electrostatics, and CustomNonbondedForce handles vdW. This function will add
+        lambda parameters to the CustomNonbondedForce to handle the switching off of interactions for certain water.
         """
-        #  Need to make sure that the electrostatics are handled using PME (for now)
-        if self.nonbonded_force.getNonbondedMethod() != openmm.NonbondedForce.PME:
-            self.raiseError("Currently only supporting PME for long range electrostatics")
+        if self.force_field_name == "Amber":
+            #  Need to make sure that the electrostatics are handled using PME (for now)
+            if self.nonbonded_force.getNonbondedMethod() != openmm.NonbondedForce.PME:
+                self.raiseError("Currently only supporting PME for long range electrostatics")
 
-        # Define the energy expression for the softcore sterics
-        energy_expression = ("U;"
-                             "U = (lambda^soft_a) * 4 * epsilon * x * (x-1.0);"  # Softcore energy
-                             "x = (sigma/reff)^6;"  # Define x as sigma/r(effective)
-                             # Calculate effective distance
-                             "reff = sigma*((soft_alpha*(1.0-lambda)^soft_b + (r/sigma)^soft_c))^(1/soft_c);"
-                             # Define combining rules
-                             "sigma = 0.5*(sigma1+sigma2); epsilon = sqrt(epsilon1*epsilon2); lambda = lambda1*lambda2")
+            # Define the energy expression for the softcore sterics
+            energy_expression = ("U;"
+                                 "U = (lambda^soft_a) * 4 * epsilon * x * (x-1.0);"  # Softcore energy
+                                 "x = (sigma/reff)^6;"  # Define x as sigma/r(effective)
+                                 # Calculate effective distance
+                                 "reff = sigma*((soft_alpha*(1.0-lambda)^soft_b + (r/sigma)^soft_c))^(1/soft_c);"
+                                 # Define combining rules
+                                 "sigma = 0.5*(sigma1+sigma2); epsilon = sqrt(epsilon1*epsilon2); lambda = lambda1*lambda2")
 
-        # Create a customised sterics force
-        custom_sterics = openmm.CustomNonbondedForce(energy_expression)
-        # Add necessary particle parameters
-        custom_sterics.addPerParticleParameter("sigma")
-        custom_sterics.addPerParticleParameter("epsilon")
-        custom_sterics.addPerParticleParameter("lambda")
-        # Assume that the system is periodic (for now)
-        custom_sterics.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
-        # Transfer properties from the original force
-        custom_sterics.setUseSwitchingFunction(self.nonbonded_force.getUseSwitchingFunction())
-        custom_sterics.setCutoffDistance(self.nonbonded_force.getCutoffDistance())
-        custom_sterics.setSwitchingDistance(self.nonbonded_force.getSwitchingDistance())
-        self.nonbonded_force.setUseDispersionCorrection(False)
-        custom_sterics.setUseLongRangeCorrection(self.nonbonded_force.getUseDispersionCorrection())
-        # Set softcore parameters
-        custom_sterics.addGlobalParameter('soft_alpha', 0.5)
-        custom_sterics.addGlobalParameter('soft_a', 1)
-        custom_sterics.addGlobalParameter('soft_b', 1)
-        custom_sterics.addGlobalParameter('soft_c', 6)
+            # Create a customised sterics force
+            custom_sterics = openmm.CustomNonbondedForce(energy_expression)
+            # Add necessary particle parameters
+            custom_sterics.addPerParticleParameter("sigma")
+            custom_sterics.addPerParticleParameter("epsilon")
+            custom_sterics.addPerParticleParameter("lambda")
+            # Assume that the system is periodic (for now)
+            custom_sterics.setNonbondedMethod(openmm.CustomNonbondedForce.CutoffPeriodic)
+            # Transfer properties from the original force
+            custom_sterics.setUseSwitchingFunction(self.nonbonded_force.getUseSwitchingFunction())
+            custom_sterics.setCutoffDistance(self.nonbonded_force.getCutoffDistance())
+            custom_sterics.setSwitchingDistance(self.nonbonded_force.getSwitchingDistance())
+            self.nonbonded_force.setUseDispersionCorrection(False)
+            custom_sterics.setUseLongRangeCorrection(self.nonbonded_force.getUseDispersionCorrection())
+            # Set softcore parameters
+            custom_sterics.addGlobalParameter('soft_alpha', 0.5)
+            custom_sterics.addGlobalParameter('soft_a', 1)
+            custom_sterics.addGlobalParameter('soft_b', 1)
+            custom_sterics.addGlobalParameter('soft_c', 6)
 
-        # Get a list of all water and non-water atom IDs
-        water_atom_ids = []
-        for resid, residue in enumerate(self.topology.residues()):
-            if resid in self.water_resids:
-                for atom in residue.atoms():
-                    water_atom_ids.append(atom.index)
+            # Get a list of all water and non-water atom IDs
+            water_atom_ids = []
+            for resid, residue in enumerate(self.topology.residues()):
+                if resid in self.water_resids:
+                    for atom in residue.atoms():
+                        water_atom_ids.append(atom.index)
 
-        # Copy all steric interactions into the custom force, and remove them from the original force
-        for atom_idx in range(self.nonbonded_force.getNumParticles()):
-            # Get atom parameters
-            [charge, sigma, epsilon] = self.nonbonded_force.getParticleParameters(atom_idx)
+            # Copy all steric interactions into the custom force, and remove them from the original force
+            for atom_idx in range(self.nonbonded_force.getNumParticles()):
+                # Get atom parameters
+                [charge, sigma, epsilon] = self.nonbonded_force.getParticleParameters(atom_idx)
 
-            # Make sure that sigma is not equal to zero
-            if np.isclose(sigma._value, 0.0):
-                sigma = 1.0 * unit.angstrom
+                # Make sure that sigma is not equal to zero
+                if np.isclose(sigma._value, 0.0):
+                    sigma = 1.0 * unit.angstrom
 
-            # Add particle to the custom force (with lambda=1 for now)
-            custom_sterics.addParticle([sigma, epsilon, 1.0])
+                # Add particle to the custom force (with lambda=1 for now)
+                custom_sterics.addParticle([sigma, epsilon, 1.0])
 
-            # Disable steric interactions in the original force by setting epsilon=0 (keep the charges for PME purposes)
-            self.nonbonded_force.setParticleParameters(atom_idx, charge, sigma, abs(0))
+                # Disable steric interactions in the original force by setting epsilon=0 (keep the charges for PME purposes)
+                self.nonbonded_force.setParticleParameters(atom_idx, charge, sigma, abs(0))
 
-        # Copy over all exceptions into the new force as exclusions
-        # Exceptions between non-water atoms will be excluded here, and handled by the NonbondedForce
-        # If exceptions (other than ignored interactions) are found involving water atoms, we have a problem
-        for exception_idx in range(self.nonbonded_force.getNumExceptions()):
-            [i, j, chargeprod, sigma, epsilon] = self.nonbonded_force.getExceptionParameters(exception_idx)
+            # Copy over all exceptions into the new force as exclusions
+            # Exceptions between non-water atoms will be excluded here, and handled by the NonbondedForce
+            # If exceptions (other than ignored interactions) are found involving water atoms, we have a problem
+            for exception_idx in range(self.nonbonded_force.getNumExceptions()):
+                [i, j, chargeprod, sigma, epsilon] = self.nonbonded_force.getExceptionParameters(exception_idx)
 
-            # If epsilon is greater than zero, this is a non-zero exception, which must be checked
-            if epsilon > 0.0 * unit.kilojoule_per_mole:
-                if i in water_atom_ids or j in water_atom_ids:
-                    self.raiseError("Non-zero exception interaction found involving water atoms ({} & {}). grand is"
-                                    " not currently able to support this".format(i, j))
+                # If epsilon is greater than zero, this is a non-zero exception, which must be checked
+                if epsilon > 0.0 * unit.kilojoule_per_mole:
+                    if i in water_atom_ids or j in water_atom_ids:
+                        self.raiseError("Non-zero exception interaction found involving water atoms ({} & {}). grand is"
+                                        " not currently able to support this".format(i, j))
 
-            # Add this to the list of exclusions
-            custom_sterics.addExclusion(i, j)
+                # Add this to the list of exclusions
+                custom_sterics.addExclusion(i, j)
 
-        # Add the custom force to the system
-        self.system.addForce(custom_sterics)
-        self.custom_nb_force = custom_sterics
+            # Add the custom force to the system
+            self.system.addForce(custom_sterics)
+            self.custom_nb_force = custom_sterics
+        elif self.force_field_name == "Charmm":
+            # safety check 1, all eqsilon values are zero in NonbondedForce
+            for atom_idx in range(self.nonbonded_force.getNumParticles()):
+                # Get atom parameters
+                [charge, sigma, epsilon] = self.nonbonded_force.getParticleParameters(atom_idx)
+                if not np.isclose(epsilon._value, 0.0):
+                    raise ValueError("epsilon value is not zero in NonbondedForce, this is not supported in Charmm")
+            # safety check 2, Energy expression is
+            self.logger.info(f"The energy expression in the given CustonNonbondedForce in the system is {self.custom_nb_force.getEnergyFunction()}")
 
+            # Introduced lambda parameters and soft-core
+            energy_expression = (
+                "lambda * (a/r6_eff)^2-b/r6_eff;"
+                "r6_eff = soft_alpha * b * (1.0-lambda)^soft_power + r^6;"  # Beutler soft core
+                "a = acoef(type1, type2);"  # a = 2 * epsilon^0.5 * sigma^6
+                "b = bcoef(type1, type2);"  # b = sigma^6
+                "lambda = lambda1*lambda2"
+            )
+            self.custom_nb_force.setEnergyFunction(energy_expression)
+            self.custom_nb_force.addPerParticleParameter("lambda")
+            self.custom_nb_force.addGlobalParameter('soft_alpha', 1)
+            self.custom_nb_force.addGlobalParameter('soft_power', 1)
+            for atom_idx in range(self.custom_nb_force.getNumParticles()):
+                typ = self.custom_nb_force.getParticleParameters(atom_idx)
+                self.custom_nb_force.setParticleParameters(atom_idx, [*typ, 1])
+                # break
         return None
 
     def reset(self):
@@ -414,8 +448,14 @@ class BaseGrandCanonicalMonteCarloSampler(object):
                                                        sigma=atom_params["sigma"],
                                                        epsilon=abs(0.0))
             # Update lambda in CustomNonbondedForce
-            self.custom_nb_force.setParticleParameters(atom_idx,
-                                                       [atom_params["sigma"], atom_params["epsilon"], lambda_vdw])
+            if self.force_field_name == "Amber":
+                self.custom_nb_force.setParticleParameters(atom_idx,
+                                                           [atom_params["sigma"], atom_params["epsilon"], lambda_vdw])
+            elif self.force_field_name == "Charmm":
+                [typ, lam] = self.custom_nb_force.getParticleParameters(atom_idx)
+                self.custom_nb_force.setParticleParameters(atom_idx, [typ, lambda_vdw])
+            else:
+                raise ValueError("Force field not recognised")
 
         # Update context with new parameters
         self.nonbonded_force.updateParametersInContext(self.context)
@@ -1963,9 +2003,11 @@ class NonequilibriumGCMCSystemSampler(GCMCSystemSampler):
             # Insert or delete a water, based on random choice
             if np.random.randint(2) == 1:
                 # Attempt to insert a water
+                self.logger.info("Insertion")
                 self.insertionMove()
             else:
                 # Attempt to delete a water
+                self.logger.info("Deletion")
                 self.deletionMove()
             self.n_moves += 1
             self.Ns.append(self.N)
