@@ -759,7 +759,7 @@ class GCMCSphereSampler(BaseGrandCanonicalMonteCarloSampler):
 
         return None
 
-    def initialise(self, context, ghostResids=[]):
+    def initialise(self, context, ghostResids=None):
         """
         Prepare the GCMC sphere for simulation by loading the coordinates from a
         Context object.
