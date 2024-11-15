@@ -1,3 +1,33 @@
+# Further development of GCMC
+## 1.2.1_dev
+Add Hamiltonian Replica Exchange to GCMC sampler. (under development).  
+
+$$\pi
+\left(
+\begin{array}{c} 
+\textbf{r}_1, N_1, U_1, \\
+\textbf{r}_2, N_2, U_2, \\
+\vdots \\
+\end{array} \middle\lvert \beta,\mu
+\right) = 
+\frac{1}{Z_1}
+\frac{V^{N_1}}{\Lambda^{3N_1} N_1!}
+{exp \Big(-\beta \big(U_1(\textbf{r}_1) -\mu N_1 \big) \Big)}
+...
+$$
+
+Acceptance ratio  
+
+$$\frac{\pi_b}{\pi_a}
+=\frac{\pi (\textbf{r}_2, N_2, U_1|\beta, \mu) \ \pi (\textbf{r}_1, N_1, U_2|\beta, \mu)}
+      {\pi (\textbf{r}_1, N_1, U_1|\beta, \mu) \ \pi (\textbf{r}_2, N_2, U_2|\beta, \mu)}
+=exp(-\beta \Delta U)
+$$
+
+## 1.1.1
+Add support for Charmm force field.
+
+# Forked from Essex Lab 
 [![Anaconda-Server Badge](https://anaconda.org/essexlab/grand/badges/version.svg)](https://anaconda.org/essexlab/grand)
 [![Anaconda-Server Badge](https://anaconda.org/essexlab/grand/badges/downloads.svg)](https://anaconda.org/essexlab/grand)
 [![Documentation Status](https://readthedocs.org/projects/grand/badge/?version=latest)](https://grand.readthedocs.io/en/latest/?badge=latest)
