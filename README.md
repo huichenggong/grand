@@ -1,3 +1,15 @@
+# Installation
+Install packages
+```bash
+mamba create -n grand_RE openmm openmmtools pymbar-core numpy matplotlib mdanalysis openmpi=4.1.5 mpi4py parmed
+mamba activate grand_RE
+pip instal .
+```
+Add the kernel to jupyter notebook
+```
+mamba install ipykernel ipywidgets -y
+python -m ipykernel install --user --name grand_RE
+```
 # Further development of GCMC
 ## 1.2.1_dev
 Add Hamiltonian Replica Exchange to GCMC sampler. (under development).  
