@@ -19,6 +19,8 @@ import math
 from copy import deepcopy
 from openmm import unit, openmm
 from openmmtools.integrators import NonequilibriumLangevinIntegrator
+from mpi4py import MPI
+
 
 from grand.utils import random_rotation_matrix
 from grand.utils import PDBRestartReporter
@@ -456,7 +458,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         # Loop over parameters
         for i, atom_idx in enumerate(atoms):
             # Obtain original parameters
-            atom_params = self.water_params[i]
+            atom_params = self.water_params[i%3]
             # Update charge in NonbondedForce
             self.nonbonded_force.setParticleParameters(atom_idx,
                                                        charge=(lambda_ele * atom_params["charge"]),
@@ -1554,6 +1556,46 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         self.n_left_sphere = 0
 
         return None
+
+class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler):
+    """
+    Class to carry out GCMC moves in OpenMM, using nonequilibrium candidate Monte Carlo (NCMC)
+    to boost acceptance rates. This version allows hamiltonian replica exchange to speed up
+    non-water sampling.
+    """
+
+    def __init__(self, system, topology, temperature, integrator, adams=None,
+                 excessChemicalPotential=-6.09 * unit.kilocalories_per_mole,
+                 standardVolume=30.345 * unit.angstroms ** 3,
+                 adamsShift=0.0, nPertSteps=1, nPropStepsPerPert=1, timeStep=2 * unit.femtoseconds, lambdas=None,
+                 ghostFile="gcmc-ghost-wats.txt", referenceAtoms=None, sphereRadius=None, sphereCentre=None,
+                 log='gcmc.log', dcd=None, rst=None, overwrite=False):
+        super().__init__(system, topology, temperature, integrator, adams, excessChemicalPotential, standardVolume,
+                         adamsShift, nPertSteps, nPropStepsPerPert, timeStep, lambdas, ghostFile, referenceAtoms,
+                         sphereRadius, sphereCentre, log, dcd, rst, overwrite)
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
+        self.all_positions = np.empty((system.getNumParticles(), self.size, 3), dtype=np.float64)
+
+    def exchange_neighbor_swap(self):
+        """
+        Replica exchange, neighbor swap
+        In odd  cycle, swap 0-1, 2-3, 4-5, ...
+        In even cycle, swap 1-2, 3-4, 5-6, ...
+        :return:
+        """
+        state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
+        pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer) # remove unit
+        # Allgather position
+        self.comm.Allgather(np.ascontiguousarray(pos_local), self.all_positions)
+        # allgather ghost_list
+        ghost_list = self.getWaterStatusResids(0)
+        ghost_list_all = self.comm.allgather(ghost_list)
+        # compute energy, and Allgather, What do we reset in each energy calculation?
+
+        # setWaterStatus
+        # adjustSpecificWater
 
 
 ########################################################################################################################
