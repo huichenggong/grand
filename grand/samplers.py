@@ -1576,7 +1576,10 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
-        self.all_positions = np.empty((system.getNumParticles(), self.size, 3), dtype=np.float64)
+        self.all_positions = np.empty((self.size, system.getNumParticles(),  3), dtype=np.float64)
+        self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
+        self.logger.info("NonequilibriumGCMCSphereSamplerMultiState object initialised")
+        self.re_cycle = 0
 
     def exchange_neighbor_swap(self):
         """
@@ -1592,10 +1595,103 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         # allgather ghost_list
         ghost_list = self.getWaterStatusResids(0)
         ghost_list_all = self.comm.allgather(ghost_list)
-        # compute energy, and Allgather, What do we reset in each energy calculation?
+        # compute energy
+        energy_array = np.zeros(self.size, dtype=np.float64)
+        self.energy_array_all *= 0.0
+        energy_array[self.rank] = state.getPotentialEnergy() / self.kT
 
-        # setWaterStatus
-        # adjustSpecificWater
+        for i, (pos, g_list) in enumerate(zip(self.all_positions, ghost_list_all)):
+            if i == self.rank:
+                continue
+            # change all old_ghost to 1
+            atoms = []
+            for resid, res in enumerate(self.topology.residues()):
+                if resid in ghost_list:
+                    for atom in res.atoms():
+                        atoms.append(atom.index)
+            self.adjustSpecificWater(atoms, 1.0)
+            # change all new_ghost to 0
+            self.deleteGhostWaters(g_list)
+            ghost_list = g_list
+            # change position
+            self.context.setPositions(pos * unit.nanometer)
+            energy_array[i] = self.context.getState(getEnergy=True).getPotentialEnergy() / self.kT
+        # reset all ghost to 1
+        atoms = []
+        for resid, res in enumerate(self.topology.residues()):
+            self.setWaterStatus(resid, 2) # 2 means real water outside the sphere, will be corrected later in updateGCMCSphere
+            if resid in ghost_list:
+                for atom in res.atoms():
+                    atoms.append(atom.index)
+        self.adjustSpecificWater(atoms, 1.0)
+        # log energy
+        msg = ",".join([str(e) for e in energy_array])
+        self.logger.info(f"Energy_kT : {msg}")
+        self.comm.Allgather(energy_array, self.energy_array_all)
+
+        # rank 0 decide the swap and broadcast the acceptance_flag
+        if self.rank ==0:
+            # In even cycle (0, 2, 4), test swap 0-1, 2-3, 4-5, ...
+            acceptance_flag = {}
+            for rep in range(self.re_cycle % 2, self.size-1, 2):
+                delta_energy = self.energy_array_all[rep+1, rep] + self.energy_array_all[rep, rep+1] \
+                               -self.energy_array_all[rep, rep] - self.energy_array_all[rep+1, rep+1]
+                accept_prob = math.exp(-delta_energy)
+                if np.random.rand() < accept_prob:
+                    acceptance_flag[rep]   = (rep+1, accept_prob, 1)
+                    acceptance_flag[rep+1] = (rep, accept_prob, 1)
+                else:
+                    acceptance_flag[rep]   = (rep+1, accept_prob, 0)
+                    acceptance_flag[rep+1] = (rep, accept_prob, 0)
+            # broadcast acceptance_flag
+        else:
+            acceptance_flag = None
+        acceptance_flag = self.comm.bcast(acceptance_flag, root=0)
+        # log acceptance_flag
+        x_dict = {1:"x", 0:" "}
+        msg1 = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        self.logger.info(msg1)
+        self.logger.info(msg2)
+
+        # Exchange velocities according to acceptance_flag
+        if self.rank in acceptance_flag and acceptance_flag[self.rank][2] == 1:
+            neighbor, _, flag = acceptance_flag[self.rank]
+            # Get local velocities
+            vel = state.getVelocities(asNumpy=True).value_in_unit(unit.nanometer / unit.picosecond)
+            vel = np.ascontiguousarray(vel, dtype='float64')
+
+            # Prepare receive buffer
+            recv_vel = np.empty_like(vel)
+
+            # Perform Sendrecv to exchange velocities with the neighbor
+            self.comm.Sendrecv(sendbuf=vel, dest=neighbor, sendtag=0,
+                               recvbuf=recv_vel, source=neighbor, recvtag=0)
+
+            # Update local velocities with received velocities
+            self.context.setVelocities(recv_vel * unit.nanometer / unit.picosecond)
+
+            # update ghost_list
+            ghost_list = ghost_list_all[neighbor]
+            self.deleteGhostWaters(ghost_list)
+
+            # set new positions
+            self.context.setPositions(self.all_positions[neighbor] * unit.nanometer)
+        else:
+            # revert ghost_list
+            ghost_list = ghost_list_all[self.rank]
+            self.deleteGhostWaters(ghost_list)
+
+            # revert position
+            self.context.setPositions(pos_local * unit.nanometer)
+
+
+
+
+
+
+        self.updateGCMCSphere(self.context.getState(getPositions=True))
+        self.re_cycle += 1
 
 
 ########################################################################################################################
