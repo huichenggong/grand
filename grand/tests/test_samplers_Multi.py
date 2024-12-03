@@ -11,7 +11,41 @@ from openmmtools.integrators import BAOABIntegrator
 from grand import samplers
 
 
-# @pytest.mark.mpi(min_size=2)
+def check_water_paramters(gcncmc_mover, topology, g_list):
+    """
+    Make sure :
+        ghost water has charge=0, lambda=0
+        normal water has charge=-0.834, lambda=1
+    """
+    res_list = [res for res in topology.residues()]
+    charge_list =  [-0.834, 0.417, 0.417]
+    sigma_list =   [3.15075e-01, 0.08908987, 0.08908987] # nm
+    epsilon_list = [6.35968e-01, 0.0       , 0.0] # kJ/mol
+    for res in res_list[1:]: # res 0 is methane
+        if res.index in g_list:
+            # this is a ghost water,
+            # self.nonbonded_force has chg=0, and
+            # self.custom_nb_force has lambda=0
+            for at, sig_ans, eps_ans in zip(res.atoms(), sigma_list, epsilon_list):
+                [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
+                assert charge.value_in_unit(unit.elementary_charge) == 0
+                [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
+                assert lam == 0.0
+                assert sigma   == pytest.approx(sig_ans)
+                assert epsilon == pytest.approx(eps_ans)
+
+        else:
+            # This is a normal water
+            for at, chg_answer, sig_ans, eps_ans in zip(res.atoms(), charge_list, sigma_list, epsilon_list):
+                [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
+                assert charge.value_in_unit(unit.elementary_charge) == chg_answer
+                [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
+                assert lam == 1.0
+                assert sigma == pytest.approx(sig_ans)
+                assert epsilon == pytest.approx(eps_ans)
+                # assert False
+
+@pytest.mark.mpi(minsize=2)
 def test_exchange_identical_U():
 
     comm = MPI.COMM_WORLD
@@ -105,6 +139,9 @@ def test_exchange_identical_U():
     for i, g_list in enumerate( gcncmc_mover.ghost_list_all ):
         assert g_list == g_list_answer[i]
 
+    # ghost water has chg=0 and lambda=0, normal water has a proper charge and lambda=1
+    check_water_paramters(gcncmc_mover, topology, ghost_list)
+
     # Let's try an exchange here, the acceptance ratio should be 1
     gcncmc_mover.exchange_neighbor_swap()
     gcncmc_mover.report(sim)
@@ -127,24 +164,8 @@ def test_exchange_identical_U():
                 assert np.allclose(forces[at.index], np.zeros(3))
 
     # check if all the water has the correct lambda in customNonbondedForce
-    res_list = [res for res in topology.residues()]
-    for res in res_list[1:]: # res 0 is methane
-        if res.index in g_list:
-            # this is a ghost water,
-            # self.nonbonded_force has chg=0, and
-            # self.custom_nb_force has lambda=0
-            for at in res.atoms():
-                [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
-                assert charge.value_in_unit(unit.elementary_charge) == 0
-                [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
-                assert lam == 0.0
-        else:
-            # This is a normal water
-            for at, chg_answer in zip(res.atoms(), [-0.834, 0.417, 0.417]):
-                [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
-                assert charge.value_in_unit(unit.elementary_charge) == chg_answer
-                [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
-                assert lam == 1.0
+    check_water_paramters(gcncmc_mover, topology, g_list)
+
     # check if the position is swapped
     pos_answer[0], pos_answer[1] = pos_answer[1], pos_answer[0]
     pos_answer[2], pos_answer[3] = pos_answer[3], pos_answer[2]
