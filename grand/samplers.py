@@ -100,7 +100,6 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         # Need to create a customised force to handle softcore steric interactions of water molecules
         # This should prevent any 0/0 energy evaluations
         self.logger.info(f"Force field detected as {self.force_field_name}")
-        self.customiseForces()
 
         # Set GCMC-specific variables
         self.N = 0  # Initialise N as zero
@@ -116,6 +115,8 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         self.water_resids = self.getWaterResids("HOH")  # All waters
         # Assign each water a status: 0: ghost water, 1: GCMC water, 2: Water not under GCMC tracking (out of sphere)
         self.water_status = {x: 1 for x in self.water_resids} # Initially assign all to 1
+
+        self.customiseForces()
 
         # Need to open the file to store ghost water IDs
         self.ghost_file = ghostFile
@@ -1580,6 +1581,14 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
         self.logger.info("NonequilibriumGCMCSphereSamplerMultiState object initialised")
         self.re_cycle = 0
+
+    def ghost_waters_to_val(self, ghost_list, lambda_val):
+        atoms = []
+        for resid, res in enumerate(self.topology.residues()):
+            if resid in ghost_list:
+                for atom in res.atoms():
+                    atoms.append(atom.index)
+        self.adjustSpecificWater(atoms, lambda_val)
 
     def exchange_neighbor_swap(self):
         """
