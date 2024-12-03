@@ -1579,6 +1579,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.size = self.comm.Get_size()
         self.all_positions = np.empty((self.size, system.getNumParticles(),  3), dtype=np.float64)
         self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
+        self.ghost_list_all = None
         self.logger.info("NonequilibriumGCMCSphereSamplerMultiState object initialised")
         self.re_cycle = 0
 
@@ -1590,6 +1591,14 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
                     atoms.append(atom.index)
         self.adjustSpecificWater(atoms, lambda_val)
 
+    def allgather_pos(self, pos_local, ghost_list):
+        """
+        Share position and ghost_list between replicas
+        """
+        # Allgather position
+        self.comm.Allgather(np.ascontiguousarray(pos_local), self.all_positions)
+        self.ghost_list_all = self.comm.allgather(ghost_list)
+
     def exchange_neighbor_swap(self):
         """
         Replica exchange, neighbor swap
@@ -1599,17 +1608,16 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         """
         state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
         pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer) # remove unit
-        # Allgather position
-        self.comm.Allgather(np.ascontiguousarray(pos_local), self.all_positions)
-        # allgather ghost_list
+
         ghost_list = self.getWaterStatusResids(0)
-        ghost_list_all = self.comm.allgather(ghost_list)
+        self.allgather_pos(pos_local, ghost_list)
+
         # compute energy
         energy_array = np.zeros(self.size, dtype=np.float64)
         self.energy_array_all *= 0.0
         energy_array[self.rank] = state.getPotentialEnergy() / self.kT
 
-        for i, (pos, g_list) in enumerate(zip(self.all_positions, ghost_list_all)):
+        for i, (pos, g_list) in enumerate(zip(self.all_positions, self.ghost_list_all)):
             if i == self.rank:
                 continue
             # change all old_ghost to 1
@@ -1681,14 +1689,14 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             self.context.setVelocities(recv_vel * unit.nanometer / unit.picosecond)
 
             # update ghost_list
-            ghost_list = ghost_list_all[neighbor]
+            ghost_list = self.ghost_list_all[neighbor]
             self.deleteGhostWaters(ghost_list)
 
             # set new positions
             self.context.setPositions(self.all_positions[neighbor] * unit.nanometer)
         else:
             # revert ghost_list
-            ghost_list = ghost_list_all[self.rank]
+            ghost_list = self.ghost_list_all[self.rank]
             self.deleteGhostWaters(ghost_list)
 
             # revert position
