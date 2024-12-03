@@ -449,7 +449,8 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         Parameters
         ----------
         atoms : list
-            List of the atom indices of the water to be adjusted
+            List of the atom indices of the water to be adjusted.
+            Atoms have to be O,H,H, O,H,H, ...
         new_lambda : float
             Value to set lambda to for this particle
         """
@@ -1584,9 +1585,13 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.re_cycle = 0
 
     def ghost_waters_to_val(self, ghost_list, lambda_val):
+        """
+        Change the ghost waters to a specific lambda value
+        """
         atoms = []
         for resid, res in enumerate(self.topology.residues()):
             if resid in ghost_list:
+                assert len([at for at in res.atoms()]) == 3
                 for atom in res.atoms():
                     atoms.append(atom.index)
         self.adjustSpecificWater(atoms, lambda_val)
@@ -1621,26 +1626,22 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             if i == self.rank:
                 continue
             # change all old_ghost to 1
-            atoms = []
-            for resid, res in enumerate(self.topology.residues()):
-                if resid in ghost_list:
-                    for atom in res.atoms():
-                        atoms.append(atom.index)
-            self.adjustSpecificWater(atoms, 1.0)
+            self.ghost_waters_to_val(ghost_list, 1.0)
             # change all new_ghost to 0
-            self.deleteGhostWaters(g_list)
+            self.ghost_waters_to_val(g_list, 0.0)
             ghost_list = g_list
             # change position
             self.context.setPositions(pos * unit.nanometer)
             energy_array[i] = self.context.getState(getEnergy=True).getPotentialEnergy() / self.kT
         # reset all ghost to 1
-        atoms = []
+        # atoms = []
         for resid, res in enumerate(self.topology.residues()):
             self.setWaterStatus(resid, 2) # 2 means real water outside the sphere, will be corrected later in updateGCMCSphere
-            if resid in ghost_list:
-                for atom in res.atoms():
-                    atoms.append(atom.index)
-        self.adjustSpecificWater(atoms, 1.0)
+        #     if resid in ghost_list:
+        #         for atom in res.atoms():
+        #             atoms.append(atom.index)
+        # self.adjustSpecificWater(atoms, 1.0)
+        self.ghost_waters_to_val(ghost_list, 1.0)
         # log energy
         msg = ",".join([str(e) for e in energy_array])
         self.logger.info(f"Energy_kT : {msg}")
@@ -1690,14 +1691,16 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
 
             # update ghost_list
             ghost_list = self.ghost_list_all[neighbor]
-            self.deleteGhostWaters(ghost_list)
+            self.ghost_waters_to_val(ghost_list, 0.0)
+            [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list]
 
             # set new positions
             self.context.setPositions(self.all_positions[neighbor] * unit.nanometer)
         else:
             # revert ghost_list
             ghost_list = self.ghost_list_all[self.rank]
-            self.deleteGhostWaters(ghost_list)
+            self.ghost_waters_to_val(ghost_list, 0.0)
+            [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list]
 
             # revert position
             self.context.setPositions(pos_local * unit.nanometer)
