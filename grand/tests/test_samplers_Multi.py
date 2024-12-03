@@ -29,6 +29,7 @@ def check_water_paramters(gcncmc_mover, topology, g_list):
             for at, sig_ans, eps_ans in zip(res.atoms(), sigma_list, epsilon_list):
                 [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
                 assert charge.value_in_unit(unit.elementary_charge) == 0
+                assert epsilon.value_in_unit(unit.kilojoule_per_mole) == pytest.approx(0.0)
                 [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
                 assert lam == 0.0
                 assert sigma   == pytest.approx(sig_ans)
@@ -39,11 +40,11 @@ def check_water_paramters(gcncmc_mover, topology, g_list):
             for at, chg_answer, sig_ans, eps_ans in zip(res.atoms(), charge_list, sigma_list, epsilon_list):
                 [charge, sigma, epsilon] = gcncmc_mover.nonbonded_force.getParticleParameters(at.index)
                 assert charge.value_in_unit(unit.elementary_charge) == chg_answer
+                assert epsilon.value_in_unit(unit.kilojoule_per_mole) == pytest.approx(0.0)
                 [sigma, epsilon, lam ] = gcncmc_mover.custom_nb_force.getParticleParameters(at.index)
                 assert lam == 1.0
                 assert sigma == pytest.approx(sig_ans)
                 assert epsilon == pytest.approx(eps_ans)
-                # assert False
 
 @pytest.mark.mpi(minsize=2)
 def test_exchange_identical_U():
