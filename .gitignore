@@ -10,3 +10,4 @@ grand/tests/output/*
 .DS_Store
 docs/Makefile
 docs/make.bat
+/grand/data/tests/methane/[0-3]/md.*
