@@ -1,7 +1,7 @@
 # Installation
 Install packages
 ```bash
-mamba create -n grand_RE openmm openmmtools pymbar-core numpy matplotlib mdanalysis openmpi=4.1.5 mpi4py parmed
+mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi=4.1.5 mpi4py parmed
 # install specific openmpi/mpich on your cluster, 4.1.5 is only an example
 mamba activate grand_RE
 pip instal .
@@ -18,8 +18,8 @@ module add openmpi4/gcc/4.1.5 # example
 which mpirun # check if the correct mpirun is used
 ```
 # Further development of GCMC
-## 1.2.1_dev
-Add Hamiltonian Replica Exchange to GCMC sampler. (under development).  
+## 1.2.1
+Add Hamiltonian Replica Exchange to GCMC sampler.
 
 $$\pi
 \left(

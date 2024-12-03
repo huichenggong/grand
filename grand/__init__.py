@@ -7,7 +7,7 @@ Marley L. Samways
 Chenggong
 """
 
-__version__ = "1.2.1_dev"
+__version__ = "1.2.1"
 
 from grand import samplers, utils, potential, tests
 
