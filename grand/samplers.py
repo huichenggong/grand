@@ -1634,18 +1634,16 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             self.context.setPositions(pos * unit.nanometer)
             energy_array[i] = self.context.getState(getEnergy=True).getPotentialEnergy() / self.kT
         # reset all ghost to 1
-        # atoms = []
         for resid, res in enumerate(self.topology.residues()):
             self.setWaterStatus(resid, 2) # 2 means real water outside the sphere, will be corrected later in updateGCMCSphere
-        #     if resid in ghost_list:
-        #         for atom in res.atoms():
-        #             atoms.append(atom.index)
-        # self.adjustSpecificWater(atoms, 1.0)
         self.ghost_waters_to_val(ghost_list, 1.0)
         # log energy
         msg = ",".join([str(e) for e in energy_array])
         self.logger.info(f"Energy_kT : {msg}")
         self.comm.Allgather(energy_array, self.energy_array_all)
+        # log number of ghost waters, this will be usefull for MBAR
+        msg = ",".join([str(len(g_list)) for g_list in self.ghost_list_all])
+        self.logger.info(f"N(n_ghost): {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
         if self.rank ==0:
@@ -1704,11 +1702,6 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
 
             # revert position
             self.context.setPositions(pos_local * unit.nanometer)
-
-
-
-
-
 
         self.updateGCMCSphere(self.context.getState(getPositions=True))
         self.re_cycle += 1
