@@ -21,6 +21,11 @@ setup(name="grand",
       author_email="mls2g13@soton.ac.uk, chenggong.hui@mpinat.mpg.de",
       packages=["grand", "grand.tests"],
       install_requires=["numpy", "mdtraj", "openmm", "openmmtools", "pymbar", "MDAnalysis", "parmed"],
+      entry_points={
+          'console_scripts': [
+          'grand_RE_MPI=grand.grand_RE_MPI:main',
+          ],
+      },
       setup_requires=["pytest-runner"],
       tests_require=["pytest"],
       test_suite="grand.tests",

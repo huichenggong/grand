@@ -14,7 +14,7 @@ python -m ipykernel install --user --name grand_RE
 Later in the job script
 ```bash
 source /home/NAME/SOFTWARE/miniforge3/bin/activate grand_RE
-module add openmpi4/gcc/4.1.5 # example
+module add openmpi4/gcc/4.1.5 # example, be consistent with version inside the conda env
 which mpirun # check if the correct mpirun is used
 ```
 # Further development of GCMC
