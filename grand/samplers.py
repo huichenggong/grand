@@ -1575,6 +1575,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         super().__init__(system, topology, temperature, integrator, adams, excessChemicalPotential, standardVolume,
                          adamsShift, nPertSteps, nPropStepsPerPert, timeStep, lambdas, ghostFile, referenceAtoms,
                          sphereRadius, sphereCentre, log, dcd, rst, overwrite)
+        self.excessChemicalPotential = excessChemicalPotential
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
@@ -1582,6 +1583,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
         self.ghost_list_all = None
         self.logger.info("NonequilibriumGCMCSphereSamplerMultiState object initialised")
+        self.logger.info(f"mu = {self.excessChemicalPotential.value_in_unit(unit.kilojoule_per_mole)} kJ/mol, {self.excessChemicalPotential/self.kT} kT")
         self.re_cycle = 0
 
     def ghost_waters_to_val(self, ghost_list, lambda_val):
@@ -1637,13 +1639,19 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         for resid, res in enumerate(self.topology.residues()):
             self.setWaterStatus(resid, 2) # 2 means real water outside the sphere, will be corrected later in updateGCMCSphere
         self.ghost_waters_to_val(ghost_list, 1.0)
+
         # log energy
         msg = ",".join([str(e) for e in energy_array])
-        self.logger.info(f"Energy_kT : {msg}")
-        self.comm.Allgather(energy_array, self.energy_array_all)
+        self.logger.info(f"U(x_i)    : {msg}")
+        self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
         # log number of ghost waters, this will be usefull for MBAR
         msg = ",".join([str(len(g_list)) for g_list in self.ghost_list_all])
         self.logger.info(f"N(n_ghost): {msg}")
+        # log energy for all hamiltonian using this replica
+        e_array = self.energy_array_all[:, self.rank].copy()
+        e_array += len(self.ghost_list_all[self.rank]) * self.excessChemicalPotential / self.kT
+        msg = ",".join([str(e) for e in e_array ])
+        self.logger.info(f"U_i(x)-μN : {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
         if self.rank ==0:
