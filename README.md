@@ -24,7 +24,7 @@ The implementation is validated by solvation free energy.
 Same results are obtained as Gromacs NPT.  
 ![Solvation_free_E](Figure/GC_vs_NPT.png)  
 
-The mathematical derivation is as follows.
+The mathematical derivation is as follows.  
 $$\pi
 \left(
 \begin{array}{c} 
