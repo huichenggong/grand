@@ -194,8 +194,8 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             custom_sterics.setUseSwitchingFunction(self.nonbonded_force.getUseSwitchingFunction())
             custom_sterics.setCutoffDistance(self.nonbonded_force.getCutoffDistance())
             custom_sterics.setSwitchingDistance(self.nonbonded_force.getSwitchingDistance())
-            self.nonbonded_force.setUseDispersionCorrection(False)
             custom_sterics.setUseLongRangeCorrection(self.nonbonded_force.getUseDispersionCorrection())
+            self.nonbonded_force.setUseDispersionCorrection(False)  # Turn off dispersion correction
             # Set softcore parameters
             custom_sterics.addGlobalParameter('soft_alpha', 0.5)
             custom_sterics.addGlobalParameter('soft_a', 1)
