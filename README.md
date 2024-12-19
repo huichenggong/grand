@@ -19,8 +19,12 @@ which mpirun # check if the correct mpirun is used
 ```
 # Further development of GCMC
 ## 1.2.1
-Add Hamiltonian Replica Exchange to GCMC sampler.
+`NonequilibriumGCMCSphereSamplerMultiState` is added for Hamiltonian replica exchange. 
+The implementation is validated by solvation free energy. 
+Same results are obtained as Gromacs NPT.  
+![Solvation_free_E](Figure/GC_vs_NPT.png)  
 
+The mathematical derivation is as follows.
 $$\pi
 \left(
 \begin{array}{c} 
@@ -36,6 +40,8 @@ $$\pi
 $$
 
 Acceptance ratio  
+If all the replicas has the same temperature ($\beta$) and chemical potential ($\mu$), 
+but different Hamiltonian ($U$). 
 
 $$\frac{\pi_b}{\pi_a}
 =\frac{\pi (\textbf{r}_2, N_2, U_1|\beta, \mu) \ \pi (\textbf{r}_1, N_1, U_2|\beta, \mu)}
