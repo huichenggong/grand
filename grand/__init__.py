@@ -7,6 +7,6 @@ Marley L. Samways
 Chenggong Hui
 """
 
-__version__ = "1.2.2_dev"
+__version__ = "1.2.2"
 
 from grand import samplers, utils, potential, tests, grand_RE_MPI
