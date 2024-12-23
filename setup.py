@@ -20,7 +20,7 @@ setup(name="grand",
       author="Marley L. Samways, Chenggong Hui",
       author_email="mls2g13@soton.ac.uk, chenggong.hui@mpinat.mpg.de",
       packages=["grand", "grand.tests"],
-      install_requires=["numpy", "mdtraj", "openmm", "openmmtools", "pymbar", "MDAnalysis", "parmed"],
+      install_requires=["numpy", "mdtraj", "openmm", "openmmtools", "pymbar", "MDAnalysis", "parmed", "scipy"],
       entry_points={
           'console_scripts': [
           'grand_RE_MPI=grand.grand_RE_MPI:main',
