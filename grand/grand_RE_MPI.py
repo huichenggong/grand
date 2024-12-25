@@ -192,7 +192,7 @@ def main():
     gcncmc_mover.initialise(sim.context, ghost_list)
     gcncmc_mover.logger.info(f"Initial ghost_list: {ghost_list}")
 
-    if (run_dir/args.ilog).exists():
+    if (not args.ilog) and (run_dir/args.ilog).exists():
         gcncmc_mover.re_cycle = read_cycle(run_dir/args.ilog)
         gcncmc_mover.n_moves, gcncmc_mover.n_accepted = read_moves(run_dir/args.ilog)
 
