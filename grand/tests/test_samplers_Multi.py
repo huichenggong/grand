@@ -148,6 +148,7 @@ def test_exchange_identical_U():
     gcncmc_mover.report(sim)
     g_list = gcncmc_mover.getWaterStatusResids(0)
     # swap 0-1, 2-3 in answers
+    assert np.allclose(gcncmc_mover.all_positions[rank, 0], pos_answer[rank])
     g_list_answer[0], g_list_answer[1] = g_list_answer[1], g_list_answer[0]
     g_list_answer[2], g_list_answer[3] = g_list_answer[3], g_list_answer[2]
 
@@ -173,3 +174,81 @@ def test_exchange_identical_U():
     state = gcncmc_mover.context.getState(getPositions=True)
     pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
     assert np.allclose(pos_local[0], pos_answer[rank])
+
+
+@pytest.mark.mpi(minsize=4)
+def test_NPT_RE_Sampler():
+    """
+
+    """
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    print(size, rank)
+    if rank > 3:
+        print(f"There are only 4 replicas in the test case. Rank {rank} is not used.")
+        return None
+    multi_dir = [Path(f"../data/tests/methane_NPT/{i}") for i in range(4)]
+    run_dir = multi_dir[rank]
+
+    # load system
+    with gzip.open(run_dir/"system.xml.gz", 'rt') as f:
+        system = openmm.XmlSerializer.deserialize(f.read())
+    # load topology
+    prmtop = app.AmberPrmtopFile("../data/tests/methane/06_solv.prmtop")
+    topology = prmtop.topology
+    md_parm = {"dt": 2 * unit.femtosecond,
+               "ref_t": 298 * unit.kelvin,
+               "tau_t": 1 * unit.picosecond,
+               "ref_p": 1 * unit.bar
+               }
+    system.addForce(openmm.MonteCarloBarostat(md_parm["ref_p"], md_parm["ref_t"]))
+
+    integrator = openmm.LangevinIntegrator(md_parm["ref_t"], 1/md_parm["tau_t"], md_parm["dt"])
+    npt_sampler = samplers.NPT_RE_Sampler(system, topology, md_parm["ref_t"], integrator, rst=None, chk=None, log=run_dir / "md.log")
+    npt_sampler.sim.loadState(str(run_dir / "eq.xml"))
+
+    assert npt_sampler.ref_pressure == md_parm["ref_p"]
+
+    pos_ans = {0: np.array([1.3196712732315063, 1.4371132850646973, 1.1908305883407593]),
+               1: np.array([1.3763463497161865, .8477632999420166 , 2.6805999279022217]),
+               2: np.array([1.2632156610488892, 2.577016830444336 , 1.619175910949707 ]),
+               3: np.array([2.151517391204834 , .4068755805492401 , .45997726917266846]), }
+
+    npt_sampler.exchange_neighbor_swap() # this one has 100% acceptance ratio
+
+    assert np.allclose(npt_sampler.positions_all[rank, 0], pos_ans[rank])
+    pos_ans[0], pos_ans[1] = pos_ans[1], pos_ans[0]
+    pos_ans[2], pos_ans[3] = pos_ans[3], pos_ans[2]
+    state = npt_sampler.sim.context.getState(getPositions=True, getVelocities=True)
+    pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
+    assert np.allclose(pos_local[0], pos_ans[rank])
+
+    boxVec_ans = {0: np.array([[2.8053941826386497, 0, 0,],
+                               [0, 2.788216759214086,0 , ],
+                               [0, 0,2.750001996598649 , ],]),
+                  1: np.array([[2.8156155824291047, 0, 0,],
+                               [0, 2.7983755733924096,0, ],
+                               [0, 0,2.760021576023808 , ],]),
+                  2: np.array([[2.798651600118392, 0, 0 ,],
+                               [0, 2.7815154615142137, 0,],
+                               [0, 0,2.7433925455961234, ],]),
+                  3: np.array([[2.799407796477963, 0, 0 ,],
+                               [0, 2.782267027684859, 0 ,],
+                               [0, 0,2.7441338109453963, ],]), }
+    assert np.allclose(npt_sampler.box_vectors_all[rank], boxVec_ans[rank])
+    boxVec_ans[0], boxVec_ans[1] = boxVec_ans[1], boxVec_ans[0]
+    boxVec_ans[2], boxVec_ans[3] = boxVec_ans[3], boxVec_ans[2]
+    boxVec_local = state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(unit.nanometer)
+    assert np.allclose(boxVec_local, boxVec_ans[rank])
+
+    vel_ans = {0: np.array([-.503620982170105 , .28046074509620667 , .08966751396656036,]),
+               1: np.array([-.6746577024459839, -.08707386255264282, .4326063394546509 ,]),
+               2: np.array([-.7799804210662842, -.707379937171936  , -.1914433240890503,]),
+               3: np.array([-.5264527797698975, -.6007993221282959 , -1.091525673866272,]), }
+    vel = state.getVelocities(asNumpy=True).value_in_unit(unit.nanometer/unit.picosecond)
+    vel_ans[0], vel_ans[1] = vel_ans[1], vel_ans[0]
+    vel_ans[2], vel_ans[3] = vel_ans[3], vel_ans[2]
+    assert np.allclose(vel[0], vel_ans[rank])
+
+

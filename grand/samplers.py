@@ -17,7 +17,7 @@ import logging
 import parmed
 import math
 from copy import deepcopy
-from openmm import unit, openmm
+from openmm import unit, openmm, app
 from openmmtools.integrators import NonequilibriumLangevinIntegrator
 from mpi4py import MPI
 
@@ -1582,7 +1582,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.all_positions = np.empty((self.size, system.getNumParticles(),  3), dtype=np.float64)
         self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
         self.ghost_list_all = None
-        self.logger.info("NonequilibriumGCMCSphereSamplerMultiState object initialised")
+        self.logger.info(f"NonequilibriumGCMCSphereSamplerMultiState object initialised on Rank {self.rank}. Total ranks: {self.size}")
         self.logger.info(f"mu = {self.excessChemicalPotential.value_in_unit(unit.kilojoule_per_mole)} kJ/mol, {self.excessChemicalPotential/self.kT} kT")
         self.re_cycle = 0
 
@@ -1716,6 +1716,156 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
 
 
 ########################################################################################################################
+
+class NPT_RE_Sampler:
+    """
+    Class to carry out NPT with Hamiltonian replica exchange.
+    Only U can be different.  p and T must be the same
+        U : Hamiltonian
+        p : reference pressure
+        T : reference temperature
+    """
+    def __init__(self, system, topology, temperature, integrator, rst, chk, log):
+        """
+        Initialise the object to be used for sampling NPT ensemble
+        """
+        self.system = system
+        self.topology = topology
+        self.temperature = temperature
+        self.ref_pressure = self.get_pressure_from_system()
+        self.integrator = integrator
+        self.rst = rst
+        self.chk = chk
+
+        self.initiated_flag = False
+
+        # Set up logger
+        self.logger = logging.getLogger(__name__)
+        handler = logging.FileHandler(log)
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.DEBUG)
+
+        # Set up MPI
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
+        self.positions_all = np.empty((self.size, system.getNumParticles(), 3), dtype=np.float64)
+        self.box_vectors_all = np.empty((self.size, 3, 3), dtype=np.float64)
+        self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64) # self.energy_array_all[i, j] = U_i(x_j)
+
+        # check pressure
+        ref_pressure_all = self.comm.allgather(self.ref_pressure.value_in_unit(unit.bar))
+        if not np.allclose(ref_pressure_all, ref_pressure_all[0]):
+            raise ValueError("All replicas must have the same reference pressure.")
+        # check temperature
+        ref_temperature_all = self.comm.allgather(self.temperature.value_in_unit(unit.kelvin))
+        if not np.allclose(ref_temperature_all, ref_temperature_all[0]):
+            raise ValueError("All replicas must have the same reference temperature.")
+
+        self.re_cycle = 0
+        self.sim = app.Simulation(topology, system, integrator)
+        self.context = self.sim.context
+        self.kT = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA * temperature
+        self.logger.info(f"NPT_RE_Sampler object initialised on Rank {self.rank}. Total ranks: {self.size}")
+
+    def get_pressure_from_system(self):
+        for f in self.system.getForces():
+            if "Barostat" in f.getName():
+                return f.getDefaultPressure()
+        return None
+
+    def allgather_pos(self, pos_local, box_local):
+        """
+        Share position, boxVector, and pV between all ranks
+        self.positions_all, self.box_vectors_all, self.pV_all will be updated
+        """
+        self.comm.Allgather(np.ascontiguousarray(pos_local), self.positions_all)
+        self.comm.Allgather(np.ascontiguousarray(box_local), self.box_vectors_all)
+
+    def exchange_neighbor_swap(self):
+        """
+        Replica exchange, neighbor swap
+        In odd  cycle, swap 0-1, 2-3, 4-5, ...
+        In even cycle, swap 1-2, 3-4, 5-6, ...
+        :return:
+        """
+        state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
+        pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
+        box_local = state.getPeriodicBoxVectors().value_in_unit(unit.nanometer)
+        self.allgather_pos(pos_local, box_local)
+
+        energy_array = np.zeros(self.size, dtype=np.float64)
+        energy_array[self.rank] = state.getPotentialEnergy() / self.kT
+
+        for i, (pos, box) in enumerate(zip(self.positions_all, self.box_vectors_all)):
+            if i == self.rank:
+                continue
+            self.context.setPeriodicBoxVectors(*(box * unit.nanometer))
+            self.context.setPositions(pos * unit.nanometer)
+            energy_array[i] = self.context.getState(getEnergy=True).getPotentialEnergy() / self.kT
+
+        self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
+
+        reduced_energy = self.energy_array_all  # The more generalized reduced_E would be (U_i(x_j) + p_i * V_j)/beta_i
+
+        # rank 0 decides the swap and broadcast the acceptance_flag
+        if self.rank ==0:
+            # In even cycle (0, 2, 4), test swap 0-1, 2-3, 4-5, ...
+            acceptance_flag = {}
+            for rep in range(self.re_cycle % 2, self.size-1, 2):
+                delta_energy = reduced_energy[rep+1, rep] + reduced_energy[rep, rep+1] \
+                               -reduced_energy[rep, rep] - reduced_energy[rep+1, rep+1]
+                accept_prob = math.exp(-delta_energy)
+                if np.random.rand() < accept_prob:
+                    acceptance_flag[rep]   = (rep+1, accept_prob, 1)
+                    acceptance_flag[rep+1] = (rep, accept_prob, 1)
+                else:
+                    acceptance_flag[rep]   = (rep+1, accept_prob, 0)
+                    acceptance_flag[rep+1] = (rep, accept_prob, 0)
+            # broadcast acceptance_flag
+        else:
+            acceptance_flag = None
+        acceptance_flag = self.comm.bcast(acceptance_flag, root=0)
+        # log acceptance_flag
+        x_dict = {1:"x", 0:" "}
+        msg1 = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        self.logger.info(msg1)
+        self.logger.info(msg2)
+
+        # Exchange velocities according to acceptance_flag
+        if self.rank in acceptance_flag and acceptance_flag[self.rank][2] == 1:
+            neighbor, _, flag = acceptance_flag[self.rank]
+            # Get local velocities
+            vel = state.getVelocities(asNumpy=True).value_in_unit(unit.nanometer / unit.picosecond)
+            vel = np.ascontiguousarray(vel, dtype='float64')
+
+            # Prepare receive buffer
+            recv_vel = np.empty_like(vel)
+
+            # Perform Sendrecv to exchange velocities with the neighbor
+            self.comm.Sendrecv(sendbuf=vel, dest=neighbor, sendtag=0,
+                               recvbuf=recv_vel, source=neighbor, recvtag=0)
+
+            # Update local boxVector, velocities, and positions
+            self.context.setPeriodicBoxVectors(*(self.box_vectors_all[neighbor] * unit.nanometer))
+            self.context.setPositions(self.positions_all[neighbor] * unit.nanometer)
+            self.context.setVelocities(recv_vel * unit.nanometer / unit.picosecond)
+
+        else:
+            # revert boxVector and positions
+            self.context.setPeriodicBoxVectors(*(box_local * unit.nanometer))
+            self.context.setPositions(pos_local * unit.nanometer)
+
+        self.re_cycle += 1
+
+
+
+
+
 ########################################################################################################################
 ########################################################################################################################
 
