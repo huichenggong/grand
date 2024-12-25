@@ -152,7 +152,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
                 # Check whether to use PDB or RST7 for the restart file
                 rst_ext = os.path.splitext(rst)[1]
                 if rst_ext == '.rst7':
-                    self.restart = parmed.openmm.reporters.RestartReporter(rst, 0)
+                    self.restart = parmed.openmm.reporters.RestartReporter(rst, 0, netcdf=True)
                 elif rst_ext == '.pdb':
                     self.restart = PDBRestartReporter(rst, self.topology)
                 else:
@@ -494,7 +494,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             Simulation object being used
         """
         # Get state
-        state = simulation.context.getState(getPositions=True, getVelocities=True)
+        state = simulation.context.getState(getPositions=True, getVelocities=True, enforcePeriodicBox=True)
 
         # Calculate rounded acceptance rate and mean N
         if self.n_moves > 0:
