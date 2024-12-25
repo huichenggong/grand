@@ -1643,16 +1643,16 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.ghost_waters_to_val(ghost_list, 1.0)
 
         # log energy
-        msg = ",".join([str(e) for e in energy_array])
-        self.logger.info(f"U(x_i)    : {msg}")
+        # msg = ",".join([str(e) for e in energy_array])
+        # self.logger.info(f"U(x_i)    : {msg}")
         self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
         # log number of ghost waters, this will be usefull for MBAR
         msg = ",".join([str(len(g_list)) for g_list in self.ghost_list_all])
         self.logger.info(f"N(n_ghost): {msg}")
         # log energy for all hamiltonian using this replica
-        e_array = self.energy_array_all[:, self.rank].copy()
-        e_array += len(self.ghost_list_all[self.rank]) * self.excessChemicalPotential / self.kT
-        msg = ",".join([str(e) for e in e_array ])
+        reduced_energy = self.energy_array_all[:, self.rank].copy()
+        reduced_energy += len(self.ghost_list_all[self.rank]) * self.excessChemicalPotential / self.kT
+        msg = ",".join([str(e) for e in reduced_energy])
         self.logger.info(f"U_i(x)-μN : {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
