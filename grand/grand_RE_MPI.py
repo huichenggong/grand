@@ -111,15 +111,17 @@ def main():
                         help="Output log file")
     parser.add_argument("-odcd", metavar="    md_gcmc1.dcd ",
                         help="Output dcd file")
-    parser.add_argument("-atom", metavar="    atom.json   ", required=True,
+    parser.add_argument("-opdb", metavar="    md.pdb       ", default="Final.pdb",
+                        help="Output pdb file. if the simulation finishes, the last frame will be written to this file.")
+    parser.add_argument("-atom", metavar="    atom.json    ", required=True,
                         help="Input atom json file for atom selection")
-    parser.add_argument("-maxh", metavar="    23.8 hour   ", default=23.8, type=float,
+    parser.add_argument("-maxh", metavar="    23.8 hour    ", default=23.8, type=float,
                         help="Maximal number of hours to run. Time will only be checked after each cycle.")
-    parser.add_argument("-deffnmi", metavar=" md_in      ",
+    parser.add_argument("-deffnmi", metavar=" md_in        ",
                         help="The default filename for all input. -irst, -ighosts, -ilog, will be ignored.")
-    parser.add_argument("-deffnmo", metavar=" md_out     ",
+    parser.add_argument("-deffnmo", metavar=" md_out       ",
                         help="The default filename for all output. -orst, -oghosts, -olog will be ignored.")
-    parser.add_argument("-re_cycle", metavar="100        ", default=100, type=int,
+    parser.add_argument("-re_cycle", metavar="100          ", default=100, type=int,
                         help="Number of replica exchange cycles to run.")
 
     args = parser.parse_args()
@@ -141,6 +143,7 @@ def main():
         args.oghosts = f"{args.deffnmo}.dat"
         args.olog = f"{args.deffnmo}.log"
         args.odcd = f"{args.deffnmo}.dcd"
+        args.opdb = f"{args.deffnmo}.pdb"
 
     # load system, topology, and restart files
     system = grand.utils.load_sys(str(run_dir/args.sys))
@@ -206,8 +209,10 @@ def main():
     # run the simulation
     gcncmc_mover.logger.info("Simulation starts")
     n_hours, n_minutes, n_seconds, elapsed_time = count_time(time_start)
+    time_up_flag = False
     while gcncmc_mover.re_cycle < args.re_cycle:
-        if stop_simulation_bcast(rank, elapsed_time, args.maxh):
+        time_up_flag = stop_simulation_bcast(rank, elapsed_time, args.maxh)
+        if time_up_flag:
             gcncmc_mover.logger.info(f"Time has exceeded maxh({args.maxh}). Stop here. h")
             break
 
@@ -226,4 +231,8 @@ def main():
         n_hours, n_minutes, n_seconds, elapsed_time = count_time(time_start)
         gcncmc_mover.logger.info(
             f"Cycle {gcncmc_mover.re_cycle}, rank: {rank}, dir: {run_dir}, {n_hours} h {n_minutes} m {n_seconds:.2f} s")
+    if not time_up_flag:
+        state = sim.context.getState(getPositions=True, getVelocities=True, enforcePeriodicBox=True)
+        with open(run_dir / args.opdb, "w") as f:
+            app.PDBFile.writeFile(topology, state.getPositions(), f, keepIds=True)
     gcncmc_mover.logger.info(f"grand_RE_MPI finished in {n_hours} h {n_minutes} m {n_seconds:.2f}")
