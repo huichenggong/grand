@@ -10,17 +10,19 @@ Marley Samways
 Ollie Melling
 """
 
+from pathlib import Path
+from copy import deepcopy
+import logging
+import math
+import os
+
 import numpy as np
 import mdtraj
-import os
-import logging
 import parmed
-import math
-from copy import deepcopy
-from openmm import unit, openmm, app
-from openmmtools.integrators import NonequilibriumLangevinIntegrator
 from mpi4py import MPI
 
+from openmm import unit, openmm, app
+from openmmtools.integrators import NonequilibriumLangevinIntegrator
 
 from grand.utils import random_rotation_matrix
 from grand.utils import PDBRestartReporter
@@ -1720,14 +1722,38 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
 class NPT_RE_Sampler:
     """
     Class to carry out NPT with Hamiltonian replica exchange.
-    Only U can be different.  p and T must be the same
+    Only U can be different.  p and T must be the same across all replicas.
         U : Hamiltonian
         p : reference pressure
         T : reference temperature
+    If only U is different, the reduced energy is U_i(x_j)
+    If all U, p, T are different, the reduced energy (matrix) is `beta_i * (U_i(x_j) + p_i * V(x_j))`. not implemented yet.
     """
-    def __init__(self, system, topology, temperature, integrator, rst, chk, log):
+    def __init__(self, system, topology, temperature, integrator, rst, chk, log, append=False):
         """
         Initialise the object to be used for sampling NPT ensemble
+        Args:
+            system : openmm.openmm.System
+                System object to be used for the simulation
+            topology : openmm.openmm.app.Topology
+                Topology object for the system to be simulated
+            temperature : openmm.unit.Quantity
+                Temperature of the simulation, must be in appropriate units
+            integrator : openmm.openmm.CustomIntegrator
+                For example, openmm.LangevinIntegrator(300*unit.kelvin, 1/unit.picosecond, 2*unit.femtosecond)
+            rst : str, start.xml
+                Name of the restart file for starting the simulation
+            chk : str, checkpoint.xml
+                Name of the checkpoint file. This file will be updated after each iteration
+            log : str
+                Name of the log file to write out
+            append : bool
+                If True,
+                    log file will be appended.
+                    Will try to read chk file for restart, if not found, rst file will be used.
+                If False,
+                    log file will be overwritten.
+                    rst file will be used for restart.
         """
         self.system = system
         self.topology = topology
@@ -1736,12 +1762,16 @@ class NPT_RE_Sampler:
         self.integrator = integrator
         self.rst = rst
         self.chk = chk
+        self.append = append
 
         self.initiated_flag = False
 
         # Set up logger
         self.logger = logging.getLogger(__name__)
-        handler = logging.FileHandler(log)
+        if self.append:
+            handler = logging.FileHandler(log, mode='a')
+        else:
+            handler = logging.FileHandler(log, mode='w')
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
@@ -1770,6 +1800,32 @@ class NPT_RE_Sampler:
         self.context = self.sim.context
         self.kT = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA * temperature
         self.logger.info(f"NPT_RE_Sampler object initialised on Rank {self.rank}. Total ranks: {self.size}")
+
+    def initialize(self, gen_vel=False, gen_temp=300*unit.kelvin):
+        """
+        Start/Restart the simulation from rst/chk file
+        If append=True
+            will try to read chk file for restart, if not found, rst file will be used.
+        Else
+            rst file will be used for restart.
+        gen_vel and gen_temp will only be used if we start from rst file.
+        """
+        if self.append:
+            if Path(self.chk).is_file():
+                self.sim.loadState(self.chk)
+                self.logger.info(f"Continue from {self.chk}")
+            else:
+                self.sim.loadState(self.rst)
+                self.logger.info(f"Start from {self.rst}")
+                if gen_vel:
+                    self.logger.info(f"Generating velocities at {gen_temp}")
+                    self.sim.context.setVelocitiesToTemperature(gen_temp)
+        else:
+            self.sim.loadState(self.rst)
+            self.logger.info(f"Start from {self.rst}")
+            if gen_vel:
+                self.logger.info(f"Generate velocities at {gen_temp}")
+                self.sim.context.setVelocitiesToTemperature(gen_temp)
 
     def get_pressure_from_system(self):
         for f in self.system.getForces():
@@ -1809,7 +1865,7 @@ class NPT_RE_Sampler:
 
         self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
 
-        reduced_energy = self.energy_array_all  # The more generalized reduced_E would be (U_i(x_j) + p_i * V_j)/beta_i
+        reduced_energy = self.energy_array_all  # The more generalized reduced_E would be beta_i * (U_i(x_j) + p_i * V_j)
 
         # rank 0 decides the swap and broadcast the acceptance_flag
         if self.rank ==0:
@@ -1835,6 +1891,9 @@ class NPT_RE_Sampler:
         msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
         self.logger.info(msg1)
         self.logger.info(msg2)
+
+        # log (reduced) energy, this will be usefull for MBAR.
+        msg = ",".join([str(e) for e in reduced_energy[:, self.rank]])
 
         # Exchange velocities according to acceptance_flag
         if self.rank in acceptance_flag and acceptance_flag[self.rank][2] == 1:
