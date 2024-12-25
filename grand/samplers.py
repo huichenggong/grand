@@ -1585,7 +1585,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
         self.ghost_list_all = None
         self.logger.info(f"NonequilibriumGCMCSphereSamplerMultiState object initialised on Rank {self.rank}. Total ranks: {self.size}")
-        self.logger.info(f"mu = {self.excessChemicalPotential.value_in_unit(unit.kilojoule_per_mole)} kJ/mol, {self.excessChemicalPotential/self.kT} kT")
+        # self.logger.info(f"mu = {self.excessChemicalPotential.value_in_unit(unit.kilojoule_per_mole)} kJ/mol, {self.excessChemicalPotential/self.kT} kT")
         self.re_cycle = 0
 
     def ghost_waters_to_val(self, ghost_list, lambda_val):

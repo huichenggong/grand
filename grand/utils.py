@@ -1069,3 +1069,117 @@ def load_top(top_file):
     else:
         raise ValueError(f"Topology file {top_file} is not supported")
     return topology
+
+# mdp class
+class mmdp_parser:
+    """
+    mmdp_parser class to parse openmm MD parameter file
+    """
+    def __init__(self):
+        self.integrator = openmm.LangevinIntegrator
+        self.dt = 2/1000 * unit.picosecond
+        self.nstmaxh = 1000                # time up check interval
+        self.nsteps = 5000                 # number of step
+        self.nstxout_compressed = 5000     # save xtc trajectory every X step, 0 means no saving
+        self.nstdcd = 0                    # save xtc trajectory every X step, 0 means no saving
+        self.nstenergy = 1000              # save csv file every X step
+        self.tau_t = 2.0 * unit.picosecond # 1/gama, inverse friction constant
+        self.ref_t = 298 * unit.kelvin     # reference temperature
+        self.gen_vel = False               #
+        self.gen_temp = 298 * unit.kelvin  #
+        self.restraint = False             #
+        self.res_fc = 1000                 # restraint force constant, in kJ/mol/nm^2
+        self.pcoupltype = None             # can be "None", "isotropic", "semiisotropic/membrane", "anisotropic"
+        self.ref_p = 1.0 * unit.bar        #
+        self.nstpcouple = 25               # in steps
+        self.surface_tension = 0.0         # in kJ/mol/nm^2
+        # GCMC
+        self.ex_potential    = -26.5254     * unit.kilojoule_per_mole
+        self.standard_volume = 29.814952e-3 * unit.nanometer**3
+        self.n_pert_steps = 399            # number of perturbation steps (Hamiltonian switching)
+        self.n_prop_steps_per_pert = 50    # number of propagation steps per perturbation step (constant Hamiltonian, relaxation)
+        self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1)]
+
+    def read(self, input_mdp):
+        with open(input_mdp) as f:
+            lines = f.readlines()
+        for line in lines:
+            if line.find(';') >= 0: line = line.split(';')[0]
+            line = line.strip()
+            if "=" in line:
+                segments = line.split('=')
+                input_param = segments[0].lower().strip().replace("-","_")
+                inp_val = segments[1].strip()
+                if input_param == "integrator":
+                    if   inp_val == "LangevinIntegrator":       self.integrator = openmm.LangevinIntegrator
+                    elif inp_val == "LangevinMiddleIntegrator": self.integrator = openmm.LangevinMiddleIntegrator
+                    else: raise ValueError(f"{inp_val} is not support in mdp_parser")
+                if input_param == "dt":                 self.dt = float(inp_val) * unit.picosecond
+                if input_param == "nstmaxh":            self.nstmaxh = int(inp_val)
+                if input_param == "nsteps":             self.nsteps = int(inp_val)
+                if input_param == "nstxout_compressed": self.nstxout_compressed = int(inp_val)
+                if input_param == "nstdcd":             self.nstdcd = int(inp_val)
+                if input_param == "nstenergy":          self.nstenergy = int(inp_val)
+                if input_param == "tau_t":              self.tau_t = float(inp_val) * unit.picosecond
+                if input_param == "ref_t":              self.ref_t = float(inp_val) * unit.kelvin
+                if input_param == "gen_vel":
+                    if   inp_val.lower() in ["yes", "on" ]: self.gen_vel = True
+                    elif inp_val.lower() in ["no",  "off"]:  self.gen_vel = False
+                    else : raise ValueError(f"{inp_val} is not a valid input for gen_vel")
+                if input_param == "gen_temp":   self.gen_temp = float(inp_val) * unit.kelvin
+                if input_param == "restraint":
+                    if   inp_val.lower() in ["yes", "on" ]:  self.restraint = True
+                    elif inp_val.lower() in ["no",  "off"]:  self.restraint = False
+                    else : raise ValueError(f"{inp_val} is not a valid input for restraint")
+                if input_param == "res_fc":     self.res_fc = float(inp_val)
+                if input_param == "pcoupltype":
+                    self.add_pcoupltype(inp_val)
+                if input_param == "ref_p":      self.ref_p = [float(i) for i in inp_val.split()] * unit.bar
+                if input_param == "nstpcouple": self.nstpcouple = int(inp_val)
+                if input_param == "surface_tension": self.surface_tension = float(inp_val)
+                if input_param == "ex_potential"          : self.ex_potential    = float(inp_val) * unit.kilojoule_per_mole
+                if input_param == "standard_volume"       : self.standard_volume = float(inp_val) * unit.nanometer**3
+                if input_param == "n_pert_steps"          : self.n_pert_steps = int(inp_val)
+                if input_param == "n_prop_steps_per_pert" : self.n_prop_steps_per_pert = int(inp_val)
+                if input_param == "md_gc_re_protocol"     :
+                    self.add_md_gc_re_protocol(inp_val)
+        return self
+
+    def add_pcoupltype(self, inp_val):
+        """
+        update self.pcoupltype
+        The allowed values are "isotropic", "semiisotropic/membrane", "anisotropic", "none", in lower case
+        """
+        if inp_val.lower() in ["isotropic", "membrane", "anisotropic"]:
+            self.pcoupltype = inp_val.lower()
+        elif inp_val.lower() == "semiisotropic":
+            self.pcoupltype = "membrane"
+        elif inp_val.lower() == "none":
+            self.pcoupltype = None
+        else:
+            raise ValueError(f"{inp_val} is not a valid input for pcoupltype")
+
+    def add_md_gc_re_protocol(self, inp_val):
+        """
+        update self.md_gc_re_protocol
+        Example input : "MD, 1000, GC, 2, MD, 1000, RE, 1"
+        This will be converted to [("MD", 1000), ("GC", 2), ("MD", 1000), ("RE", 1),]
+        """
+        allower_steps = {"MD", "GC", "RE"}
+        words = inp_val.split(",")
+        if len(words) % 2 != 0:
+            raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val}")
+        self.md_gc_re_protocol = []
+        for i in range(0, len(words), 2):
+            if words[i].strip() not in allower_steps:
+                raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val}")
+            if words[i].strip() == "RE" and int(words[i+1].strip()) != 1:
+                raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE can only be 1")
+            self.md_gc_re_protocol.append((words[i].strip(), int(words[i+1].strip())))
+        # RE cannot follow RE
+        for i in range(1, len(self.md_gc_re_protocol)):
+            if self.md_gc_re_protocol[i][0] == "RE" and self.md_gc_re_protocol[i-1][0] == "RE":
+                raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE cannot follow RE")
+        if self.md_gc_re_protocol[0][0] == "RE" and self.md_gc_re_protocol[-1][0] == "RE":
+            raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE cannot follow RE")
+
