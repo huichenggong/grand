@@ -11,3 +11,4 @@ grand/tests/output/*
 docs/Makefile
 docs/make.bat
 /grand/data/tests/methane/[0-3]/md.*
+/grand/data/tests/methane_NPT/[0-3]/md.log
