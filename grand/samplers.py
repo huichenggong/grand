@@ -1448,6 +1448,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             state = self.context.getState(getPositions=True, enforcePeriodicBox=True)
             self.setWaterStatus(resid, 0)
             self.updateGCMCSphere(state)
+            self.logger.info(f"{acc_prob} rejected")
         else:
             # Update some variables if move is accepted
             self.N = len(wats_in_sphere)
@@ -1456,6 +1457,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.positions = deepcopy(state.getPositions(asNumpy=True))
             self.velocities = deepcopy(state.getVelocities(asNumpy=True))
             self.updateGCMCSphere(state)
+            self.logger.info(f"{acc_prob} accepted")
 
         return None
 
@@ -1531,6 +1533,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.velocities = -self.velocities
             state = self.context.getState(getPositions=True, enforcePeriodicBox=True)
             self.updateGCMCSphere(state)
+            self.logger.info(f"{acc_prob} rejected")
         else:
             # Update some variables if move is accepted
             self.setWaterStatus(resid, 0)
@@ -1540,6 +1543,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.positions = deepcopy(state.getPositions(asNumpy=True))
             self.velocities = deepcopy(state.getVelocities(asNumpy=True))
             self.updateGCMCSphere(state)
+            self.logger.info(f"{acc_prob} accepted")
 
         return None
 
