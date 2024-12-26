@@ -213,7 +213,7 @@ def main():
     while gcncmc_mover.re_cycle < args.re_cycle:
         time_up_flag = stop_simulation_bcast(rank, elapsed_time, args.maxh)
         if time_up_flag:
-            gcncmc_mover.logger.info(f"Time has exceeded maxh({args.maxh}). Stop here. h")
+            gcncmc_mover.logger.info(f"Time has exceeded maxh({args.maxh}). Stop here.")
             break
 
         # Actual simulation, execute md_gc_re_protocol
