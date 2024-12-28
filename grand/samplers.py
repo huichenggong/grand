@@ -1383,6 +1383,8 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         # Store initial positions
         old_positions = deepcopy(self.positions)
 
+        self.context.setVelocities(-self.velocities)
+
         # Choose a random site in the sphere to insert a water
         new_positions, resid, atom_indices = self.insertRandomWater()
 
@@ -1443,7 +1445,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             # Need to revert the changes made if the move is to be rejected
             self.adjustSpecificWater(atom_indices, 0.0)
             self.context.setPositions(old_positions)
-            self.context.setVelocities(-self.velocities)  # Reverse velocities on rejection
+            self.context.setVelocities(self.velocities)
             self.positions = deepcopy(old_positions)
             self.velocities = -self.velocities
             state = self.context.getState(getPositions=True, enforcePeriodicBox=True)
@@ -1466,6 +1468,8 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         """
         # Store initial positions
         old_positions = deepcopy(self.positions)
+
+        self.context.setVelocities(-self.velocities)
 
         # Choose a random water in the sphere to be deleted
         resid, atom_indices = self.deleteRandomWater()
@@ -1528,7 +1532,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             # Need to revert the changes made if the move is to be rejected
             self.adjustSpecificWater(atom_indices, 1.0)
             self.context.setPositions(old_positions)
-            self.context.setVelocities(-self.velocities)  # Reverse velocities on rejection
+            self.context.setVelocities(self.velocities)
             self.positions = deepcopy(old_positions)
             self.velocities = -self.velocities
             state = self.context.getState(getPositions=True, enforcePeriodicBox=True)
