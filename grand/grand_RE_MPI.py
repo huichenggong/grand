@@ -222,7 +222,7 @@ def main():
             if step_name == "MD":
                 sim.step(step_n)
             elif step_name == "GC":
-                gcncmc_mover.move(sim.context, 2)
+                gcncmc_mover.move(sim.context, step_n)
             elif step_name == "RE":
                 gcncmc_mover.exchange_neighbor_swap()
             else:
