@@ -1,22 +1,54 @@
-# Installation
-Install packages
+# 1. Installation
+## 1.1 Install packages
 ```bash
+# mamba works the same as conda.
 mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi=4.1.5 mpi4py parmed
 # install specific openmpi/mpich on your cluster, 4.1.5 is only an example
 mamba activate grand_RE
 pip instal .
 ```
-Add the kernel to jupyter notebook
+or use the `environment.yml` file
+```ymal
+name: grand_RE
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - openmm
+  - openmmtools
+  - pymbar-core
+  - mdanalysis
+  - openmpi=4.1.5
+  - mpi4py
+  - parmed
+  - pip:
+    - git+https://github.com/huichenggong/grand.git
+```
+```bash
+mamba env create -f environment.yml
+```
+
+## 1.2 Add the kernel to jupyter notebook
 ```
 mamba install ipykernel ipywidgets -y
 python -m ipykernel install --user --name grand_RE
 ```
-Later in the job script
+
+## 1.3 Later in the job script / on the cluster
 ```bash
 source /home/NAME/SOFTWARE/miniforge3/bin/activate grand_RE
 module add openmpi4/gcc/4.1.5 # example, be consistent with version inside the conda env
 which mpirun # check if the correct mpirun is used
 ```
+
+## 1.X Uninstall
+```bash
+jupyter kernelspec uninstall unwanted-kernel  # use the name of your jupyter kernel
+conda remove -n grand_RE --all
+```
+
 # Further development of GCMC
 ## 1.2.1
 `NonequilibriumGCMCSphereSamplerMultiState` is added for Hamiltonian replica exchange. 
