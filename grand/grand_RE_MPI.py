@@ -120,7 +120,7 @@ def main():
     parser.add_argument("-deffnmi", metavar=" md_in        ",
                         help="The default filename for all input. -irst, -ighosts, -ilog, will be ignored.")
     parser.add_argument("-deffnmo", metavar=" md_out       ",
-                        help="The default filename for all output. -orst, -oghosts, -olog will be ignored.")
+                        help="The default filename for all output. -orst, -oghosts, -olog, -opdb will be ignored.")
     parser.add_argument("-re_cycle", metavar="100          ", default=100, type=int,
                         help="Number of replica exchange cycles to run.")
 
