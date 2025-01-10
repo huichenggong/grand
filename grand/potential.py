@@ -9,6 +9,8 @@ Marley Samways
 """
 
 import numpy as np
+import logging
+logging.getLogger("pymbar").setLevel(logging.ERROR) # Suppress logging in pymbar
 import pymbar
 import openmmtools
 from simtk.openmm.app import *
