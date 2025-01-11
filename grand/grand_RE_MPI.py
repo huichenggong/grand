@@ -231,8 +231,7 @@ def main():
         n_hours, n_minutes, n_seconds, elapsed_time = count_time(time_start)
         gcncmc_mover.logger.info(
             f"Cycle {gcncmc_mover.re_cycle}, rank: {rank}, dir: {run_dir}, {n_hours} h {n_minutes} m {n_seconds:.2f} s")
-    if not time_up_flag:
-        state = sim.context.getState(getPositions=True, getVelocities=True, enforcePeriodicBox=True)
-        with open(run_dir / args.opdb, "w") as f:
-            app.PDBFile.writeFile(topology, state.getPositions(), f, keepIds=True)
+    state = sim.context.getState(getPositions=True, getVelocities=True, enforcePeriodicBox=True)
+    with open(run_dir / args.opdb, "w") as f:
+        app.PDBFile.writeFile(topology, state.getPositions(), f, keepIds=True)
     gcncmc_mover.logger.info(f"grand_RE_MPI finished in {n_hours} h {n_minutes} m {n_seconds:.2f}")
