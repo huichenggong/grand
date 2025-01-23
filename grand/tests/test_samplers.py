@@ -456,6 +456,7 @@ class TestGCMCSphereSampler(unittest.TestCase):
         Make sure the GCMCSphereSampler.updateGCMCSphere() method works correctly
         """
         # Get initial gcmc_resids and status
+        ghost_wat_list = deepcopy(gcmc_sphere_sampler.getWaterStatusResids(0))
         gcmc_waters = deepcopy(gcmc_sphere_sampler.getWaterStatusResids(1))
         sphere_centre = deepcopy(gcmc_sphere_sampler.sphere_centre)
         N = gcmc_sphere_sampler.N
@@ -465,9 +466,15 @@ class TestGCMCSphereSampler(unittest.TestCase):
         gcmc_sphere_sampler.updateGCMCSphere(state)
 
         # Make sure that these values are all still the same
-        assert all(np.isclose(gcmc_waters, gcmc_sphere_sampler.getWaterStatusResids(1)))
+        # assert all(np.isclose(gcmc_waters, gcmc_sphere_sampler.getWaterStatusResids(1)))
+        assert ghost_wat_list == gcmc_sphere_sampler.getWaterStatusResids(0)
+        assert gcmc_waters == gcmc_sphere_sampler.getWaterStatusResids(1)
         assert all(np.isclose(sphere_centre._value, gcmc_sphere_sampler.sphere_centre._value))
         assert N == gcmc_sphere_sampler.N
+        # print(len(ghost_wat_list), len(gcmc_waters), N)
+        # assert len(ghost_wat_list) == 7
+        # assert len(gcmc_waters) == 0
+        # assert N == 0
 
         return None
 

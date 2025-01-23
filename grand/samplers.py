@@ -390,7 +390,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         resids : numpy.array
             List of residues which match that status
         """
-        resids = [x[0] for x in self.water_status.items() if x[1] == value]
+        resids = [index for index, state in self.water_status.items() if state == value]
         return resids
 
     def getWaterStatusValue(self, resid):
@@ -937,14 +937,14 @@ class GCMCSphereSampler(BaseGrandCanonicalMonteCarloSampler):
         # calculate the distance between the center and all water oxygen
         dist_all_o = np.linalg.norm(positions[self.water_o_index] - half_box, axis=1)
         # 0, ghost, 1 : inside, 2 : outside
-        for resid, dist, status in zip(self.water_resids, dist_all_o, self.water_status):
+        for resid, dist in zip(self.water_resids, dist_all_o):
+            status = self.water_status[resid]
             if status == 0:
                 continue
             if dist <= self.sphere_radius.value_in_unit(unit.nanometer):
                 self.water_status[resid] = 1
             else:
                 self.water_status[resid] = 2
-        # update self.N with the number of (1) water inside the sphere
 
 
         # # Check which waters are in the GCMC region
