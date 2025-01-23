@@ -4,10 +4,11 @@
 # mamba works the same as conda.
 mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi=4.1.5 mpi4py parmed
 # install specific openmpi/mpich on your cluster, 4.1.5 is only an example
+# you may also need to specify the cuda version according to you nvidia driver
 mamba activate grand_RE
 pip instal .
 ```
-or use the `environment.yml` file
+or use the `environment.yml` file. Add `cuda=XX.X` according to the output of `nvidia-smi`.
 ```ymal
 name: grand_RE
 channels:
