@@ -32,7 +32,7 @@ dependencies:
 mamba env create -f environment.yml
 ```
 
-## 1.2 Add the kernel to jupyter notebook
+## 1.2 Add the kernel to jupyter notebook (optional)
 ```
 mamba install ipykernel ipywidgets -y
 python -m ipykernel install --user --name grand_RE
@@ -47,8 +47,8 @@ which mpirun # check if the correct mpirun is used
 
 ## 1.X Uninstall
 ```bash
-jupyter kernelspec uninstall unwanted-kernel  # use the name of your jupyter kernel
-conda remove -n grand_RE --all
+jupyter kernelspec uninstall grand_RE  # remove the kernel named grand_RE from jupyter notebook
+conda remove -n grand_RE --all # remove the conda environment named grand_RE
 ```
 
 # Further development of GCMC
