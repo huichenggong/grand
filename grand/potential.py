@@ -13,9 +13,9 @@ import logging
 logging.getLogger("pymbar").setLevel(logging.ERROR) # Suppress logging in pymbar
 import pymbar
 import openmmtools
-from simtk.openmm.app import *
-from simtk.openmm import *
-from simtk.unit import *
+from openmm.app import *
+from openmm.openmm import *
+from openmm.unit import *
 
 import grand
 
