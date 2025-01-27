@@ -1045,7 +1045,7 @@ def load_sys(sys_file):
     :return: openmm.System
     """
     # if sys_file is xml.gz
-    if sys_file.endswith(".gz"):
+    if str(sys_file).endswith(".gz"):
         with gzip.open(sys_file, 'rt') as f:
             system = openmm.XmlSerializer.deserialize(f.read())
     else:
@@ -1060,6 +1060,7 @@ def load_top(top_file):
     remember to run topology.setPeriodicBoxVectors if you provide a charmm psf file. If you don't set
     the box for topology, later trajectory will not have box information.
     """
+    top_file = str(top_file)
     if top_file.endswith(".psf"):
         psf = app.CharmmPsfFile(top_file)
         topology = psf.topology
@@ -1183,3 +1184,46 @@ class mmdp_parser:
         if self.md_gc_re_protocol[0][0] == "RE" and self.md_gc_re_protocol[-1][0] == "RE":
             raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE cannot follow RE")
 
+def set_barostat(system, mdp_inputs):
+    """
+    Add barostat to the system
+    :param system:
+    :param mdp_inputs:
+    :return:
+    """
+    if mdp_inputs.pcoupltype == "isotropic":
+        barostat = openmm.MonteCarloBarostat(mdp_inputs.ref_p[0], mdp_inputs.ref_t, mdp_inputs.nstpcouple)
+        system.addForce(barostat)
+    elif mdp_inputs.pcoupltype == "membrane":
+        barostat = openmm.MonteCarloMembraneBarostat(mdp_inputs.ref_p[0], mdp_inputs.surface_tension,
+                                                     mdp_inputs.ref_t,
+                                                     openmm.MonteCarloMembraneBarostat.XYIsotropic,
+                                                     openmm.MonteCarloMembraneBarostat.ZFree,
+                                                     mdp_inputs.nstpcouple)
+        system.addForce(barostat)
+    elif mdp_inputs.pcoupltype == "anisotropic":
+        default_pressure = 1.0 * unit.bar
+        px_scale = mdp_inputs.ref_p[0] / default_pressure
+        py_scale = mdp_inputs.ref_p[1] / default_pressure
+        pz_scale = mdp_inputs.ref_p[2] / default_pressure
+        barostat = openmm.MonteCarloAnisotropicBarostat(default_pressure, mdp_inputs.ref_t, px_scale, py_scale, pz_scale, mdp_inputs.nstpcouple)
+        system.addForce(barostat)
+    else:
+        raise ValueError(f"pcoupltype {mdp_inputs.pcoupltype} is not supported")
+
+def load_state(state_file):
+    if str(state_file).endswith(".gz"):
+        with gzip.open(state_file, 'rt') as f:
+            state = openmm.XmlSerializer.deserialize(f.read())
+    else:
+        with open(state_file, 'r') as f:
+            state = openmm.XmlSerializer.deserialize(f.read())
+    return state
+
+def save_state(state, state_file):
+    if str(state_file).endswith(".gz"):
+        with gzip.open(state_file, 'wt') as f:
+            f.write(openmm.XmlSerializer.serialize(state))
+    else:
+        with open(state_file, 'w') as f:
+            f.write(openmm.XmlSerializer.serialize(state))
