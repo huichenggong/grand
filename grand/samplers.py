@@ -24,8 +24,7 @@ from mpi4py import MPI
 from openmm import unit, openmm, app
 from openmmtools.integrators import NonequilibriumLangevinIntegrator
 
-from grand.utils import random_rotation_matrix
-from grand.utils import PDBRestartReporter
+from grand.utils import random_rotation_matrix, PDBRestartReporter, save_state, load_state
 from grand.potential import get_lambda_values
 
 
@@ -1823,7 +1822,7 @@ class NPT_RE_Sampler:
         else:
             handler = logging.FileHandler(log, mode='w')
         handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
         self.logger.setLevel(logging.DEBUG)
@@ -1850,6 +1849,7 @@ class NPT_RE_Sampler:
         self.context = self.sim.context
         self.kT = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA * temperature
         self.logger.info(f"NPT_RE_Sampler object initialised on Rank {self.rank}. Total ranks: {self.size}")
+        self.current_state = None
 
     def initialize(self, gen_vel=False, gen_temp=300*unit.kelvin):
         """
@@ -1862,20 +1862,28 @@ class NPT_RE_Sampler:
         """
         if self.append:
             if Path(self.chk).is_file():
-                self.sim.loadState(self.chk)
+                state = load_state(self.chk)
+                self.sim.context.setPeriodicBoxVectors(*state.getPeriodicBoxVectors())
+                self.sim.context.setPositions(state.getPositions())
+                self.sim.context.setVelocities(state.getVelocities())
                 self.logger.info(f"Continue from {self.chk}")
             else:
-                self.sim.loadState(self.rst)
+                state = load_state(self.rst)
+                self.sim.context.setPeriodicBoxVectors(*state.getPeriodicBoxVectors())
+                self.sim.context.setPositions(state.getPositions())
                 self.logger.info(f"Start from {self.rst}")
                 if gen_vel:
                     self.logger.info(f"Generating velocities at {gen_temp}")
                     self.sim.context.setVelocitiesToTemperature(gen_temp)
         else:
-            self.sim.loadState(self.rst)
+            state = load_state(self.rst)
+            self.sim.context.setPeriodicBoxVectors(*state.getPeriodicBoxVectors())
+            self.sim.context.setPositions(state.getPositions())
             self.logger.info(f"Start from {self.rst}")
             if gen_vel:
                 self.logger.info(f"Generate velocities at {gen_temp}")
                 self.sim.context.setVelocitiesToTemperature(gen_temp)
+        self.current_state = state
 
     def get_pressure_from_system(self):
         for f in self.system.getForces():
@@ -1915,7 +1923,7 @@ class NPT_RE_Sampler:
 
         self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
 
-        reduced_energy = self.energy_array_all  # The more generalized reduced_E would be beta_i * (U_i(x_j) + p_i * V_j)
+        reduced_energy = self.energy_array_all  # The more generalized reduced_E would be E(i,j) beta_i * (U_i(x_j) + p_i * V_j)
 
         # rank 0 decides the swap and broadcast the acceptance_flag
         if self.rank ==0:
@@ -1936,11 +1944,14 @@ class NPT_RE_Sampler:
             acceptance_flag = None
         acceptance_flag = self.comm.bcast(acceptance_flag, root=0)
         # log acceptance_flag
+        self.logger.info(f"re_cycle: {self.re_cycle}")
         x_dict = {1:"x", 0:" "}
-        msg1 = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
-        msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
-        self.logger.info(msg1)
-        self.logger.info(msg2)
+        msg = ",".join([str(e) for e in reduced_energy[:,self.rank]])
+        self.logger.info(f"U_i(x) : {msg}")
+        msg = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        self.logger.info(msg)
+        msg = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+        self.logger.info(msg)
 
         # log (reduced) energy, this will be usefull for MBAR.
         msg = ",".join([str(e) for e in reduced_energy[:, self.rank]])
@@ -1963,11 +1974,13 @@ class NPT_RE_Sampler:
             self.context.setPeriodicBoxVectors(*(self.box_vectors_all[neighbor] * unit.nanometer))
             self.context.setPositions(self.positions_all[neighbor] * unit.nanometer)
             self.context.setVelocities(recv_vel * unit.nanometer / unit.picosecond)
+            self.current_state = self.context.getState(getPositions=True, getVelocities=True, getEnergy=True)
 
         else:
             # revert boxVector and positions
             self.context.setPeriodicBoxVectors(*(box_local * unit.nanometer))
             self.context.setPositions(pos_local * unit.nanometer)
+            self.current_state = state
 
         self.re_cycle += 1
 
