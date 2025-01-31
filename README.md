@@ -67,12 +67,12 @@ $$
 &=
 \frac{1}{Z_1}
 \frac{1}{N_1!}
-{exp \Big(N(\beta\mu_1+ln(\frac{V^0}{V}))-\beta U_1 (\textbf{r}_1) \Big)}
+{exp \Big(N_1 (\beta\mu_1+ln(\frac{V^0}{V}))-\beta U_1 (\textbf{r}_1) \Big)}
 ...  \\
 &=
 \frac{1}{Z_1}
 \frac{1}{N_1!}
-{exp \Big(NB_1-\beta U_1(\textbf{r}_1) \Big)}
+{exp \Big(N_1 B_1-\beta U_1(\textbf{r}_1) \Big)}
 ...  \\
 \end{align*}
 $$
