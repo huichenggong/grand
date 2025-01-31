@@ -55,7 +55,9 @@ conda remove -n grand_RE --all # remove the conda environment named grand_RE
 ## 1.2.5 $\mu$ can be different for each replica.  
 Math:  
 Partition function, (replace $\beta \mu + ln(\frac{V^0}{V_{GCMC}})$ with $B$):  
-$$\begin{align}
+
+$$
+\begin{align*}
 \pi
 \left(
 \begin{array}{c} 
@@ -79,11 +81,13 @@ $$\begin{align}
 \frac{1}{N_1!}
 {exp \Big(NB_1-\beta U(\textbf{r}_1) \Big)}
 ...  \\
-\end{align}
+\end{align*}
 $$
 
 Acceptance ratio:
-$$\begin{align}
+
+$$
+\begin{align*}
 \frac{\pi_b}{\pi_a}
 &=
 \frac{\pi
@@ -105,11 +109,12 @@ $$\begin{align}
 &= \frac
 {exp(N_2 B_1 - \beta U_1(\textbf{r}_2))exp(N_1 B_2 - \beta U_2(\textbf{r}_1))}
 {exp(N_1 B_1 - \beta U_1(\textbf{r}_1))exp(N_2 B_2 - \beta U_2(\textbf{r}_2))}
-\end{align}
+\end{align*}
 $$
 
 Reduced Energy Matrix:
-$$E_{ij} = N_i B_j - \beta U_j(\textbf{r}_i)
+$$
+E_{ij} = N_i B_j - \beta U_j(\textbf{r}_i)
 $$
 
 ## 1.2.1
