@@ -59,13 +59,7 @@ Partition function, (replace $\beta \mu + ln(\frac{V^0}{V_{GCMC}})$ with $B$):
 $$
 \begin{align*}
 \pi
-\left(
-\begin{array}{c} 
-\textbf{r}_1, N_1, U_1, \mu_1 \\
-\textbf{r}_2, N_2, U_2, \mu_2 \\
-\vdots \\
-\end{array} \middle\lvert \beta, V_{GCMC}
-\right) 
+\pi(r_1, N_1, U_1, \mu_1 | \beta, V) * \pi(r_2, N_2, U_2, \mu_2 | \beta, V) ...
 &=
 \frac{1}{Z_1}
 \frac{V^{N_1}}{{V_0}^{N_1} N_1!}
@@ -74,7 +68,7 @@ $$
 &=
 \frac{1}{Z_1}
 \frac{1}{N_1!}
-{exp \Big(N(\beta\mu_1+ln(\frac{V^0}{V_{GCMC}}))-\beta U(\textbf{r}_1) \Big)}
+{exp \Big(N(\beta\mu_1+ln(\frac{V^0}{V}))-\beta U(\textbf{r}_1) \Big)}
 ...  \\
 &=
 \frac{1}{Z_1}
@@ -90,22 +84,12 @@ $$
 \begin{align*}
 \frac{\pi_b}{\pi_a}
 &=
-\frac{\pi
-\left(
-\begin{array}{c} 
-\textbf{r}_1, N_1, U_1, \mu_1 \\
-\textbf{r}_2, N_2, U_2, \mu_2 \\
-\vdots \\
-\end{array} \middle\lvert \beta, V_{GCMC}
-\right)}
-{\pi
-\left(
-\begin{array}{c} 
-\textbf{r}_2, N_2, U_1, \mu_1 \\
-\textbf{r}_1, N_1, U_2, \mu_2 \\
-\vdots \\
-\end{array} \middle\lvert \beta, V_{GCMC}
-\right)} \\
+\frac{
+    \pi(r_2, N_2, U_1, \mu_1, r_1, N_1, U_2, \mu_2, ... | \beta, V)
+}
+{
+    \pi(r_1, N_1, U_1, \mu_1, r_2, N_2, U_2, \mu_2, ... | \beta, V)
+} \\
 &= \frac
 {exp(N_2 B_1 - \beta U_1(\textbf{r}_2))exp(N_1 B_2 - \beta U_2(\textbf{r}_1))}
 {exp(N_1 B_1 - \beta U_1(\textbf{r}_1))exp(N_2 B_2 - \beta U_2(\textbf{r}_2))}
@@ -113,8 +97,9 @@ $$
 $$
 
 Reduced Energy Matrix:
+
 $$
-E_{ij} = N_i B_j - \beta U_j(\textbf{r}_i)
+E_{ij} = N_i B_j - \beta U_j( \textbf{r}_i )
 $$
 
 ## 1.2.1
