@@ -58,7 +58,6 @@ Partition function, (replace $\beta \mu + ln(\frac{V^0}{V_{GCMC}})$ with $B$):
 
 $$
 \begin{align*}
-\pi
 \pi(r_1, N_1, U_1, \mu_1 | \beta, V) * \pi(r_2, N_2, U_2, \mu_2 | \beta, V) ...
 &=
 \frac{1}{Z_1}
