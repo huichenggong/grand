@@ -82,6 +82,7 @@ $$
 ...  \\
 \end{align}
 $$
+
 Acceptance ratio:
 $$
 \begin{align}
@@ -108,6 +109,7 @@ $$
 {exp(N_1 B_1 - \beta U_1(\textbf{r}_1))exp(N_2 B_2 - \beta U_2(\textbf{r}_2))}
 \end{align}
 $$
+
 Reduced Energy Matrix:
 $$
 E_{ij} = N_i B_j - \beta U_j(\textbf{r}_i)
