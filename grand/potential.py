@@ -7,10 +7,8 @@ Set of functions to calibrate the excess chemical potential and standard state v
 
 Marley Samways
 """
-
+import os
 import numpy as np
-import logging
-logging.getLogger("pymbar").setLevel(logging.ERROR) # Suppress logging in pymbar
 import pymbar
 import openmmtools
 from openmm.app import *
@@ -154,19 +152,19 @@ def calc_mu_ex(system, topology, positions, box_vectors, temperature, n_lambdas,
             # Reset lambda value
             gcmc_mover.adjustSpecificWater(wat_ids, lambdas[i])
 
-    # Calculate equilibration & number of uncorrelated samples
+    # Calculate equilibration & number of uncorrelated samples, this is pymbar 4, 3.X will not work
     N_k = np.zeros(n_lambdas, np.int32)
     for i in range(n_lambdas):
-        n_equil, g, neff_max = pymbar.timeseries.detectEquilibration(U[i, i, :])
-        indices = pymbar.timeseries.subsampleCorrelatedData(U[i, i, :], g=g)
+        n_equil, g, neff_max = pymbar.timeseries.detect_equilibration(U[i, i, :])
+        indices = pymbar.timeseries.subsample_correlated_data(U[i, i, :], g=g)
         N_k[i] = len(indices)
         U[i, :, 0:N_k[i]] = U[i, :, indices].T
 
     # Calculate free energy differences
     mbar = pymbar.MBAR(U, N_k)
-    results = mbar.getFreeEnergyDifferences()
-    deltaG_ij = results[0]
-    ddeltaG_ij = results[1]
+    results = mbar.compute_free_energy_differences()
+    deltaG_ij = results["Delta_f"]
+    ddeltaG_ij = results["dDelta_f"]
 
     # Extract overall free energy change
     dG = -deltaG_ij[0, -1]

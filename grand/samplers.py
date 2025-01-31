@@ -24,8 +24,8 @@ from mpi4py import MPI
 from openmm import unit, openmm, app
 from openmmtools.integrators import NonequilibriumLangevinIntegrator
 
-from grand.utils import random_rotation_matrix, PDBRestartReporter, save_state, load_state
-from grand.potential import get_lambda_values
+from .utils import random_rotation_matrix, PDBRestartReporter, save_state, load_state
+from .potential import get_lambda_values
 
 
 class BaseGrandCanonicalMonteCarloSampler(object):
