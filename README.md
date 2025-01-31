@@ -52,6 +52,67 @@ conda remove -n grand_RE --all # remove the conda environment named grand_RE
 ```
 
 # Further development of GCMC
+## 1.2.5 $\mu$ can be different for each replica.  
+Math:  
+Partition function, (replace $\beta \mu + ln(\frac{V^0}{V_{GCMC}})$ with $B$):  
+$$
+\begin{align}
+\pi
+\left(
+\begin{array}{c} 
+\textbf{r}_1, N_1, U_1, \mu_1 \\
+\textbf{r}_2, N_2, U_2, \mu_2 \\
+\vdots \\
+\end{array} \middle\lvert \beta, V_{GCMC}
+\right) 
+&=
+\frac{1}{Z_1}
+\frac{V^{N_1}}{{V_0}^{N_1} N_1!}
+{exp \Big(-\beta \big(U_1(\textbf{r}_1) -\mu N_1 \big) \Big)}
+...  \\
+&=
+\frac{1}{Z_1}
+\frac{1}{N_1!}
+{exp \Big(N(\beta\mu_1+ln(\frac{V^0}{V_{GCMC}}))-\beta U(\textbf{r}_1) \Big)}
+...  \\
+&=
+\frac{1}{Z_1}
+\frac{1}{N_1!}
+{exp \Big(NB_1-\beta U(\textbf{r}_1) \Big)}
+...  \\
+\end{align}
+$$
+Acceptance ratio:
+$$
+\begin{align}
+\frac{\pi_b}{\pi_a}
+&=
+\frac{\pi
+\left(
+\begin{array}{c} 
+\textbf{r}_1, N_1, U_1, \mu_1 \\
+\textbf{r}_2, N_2, U_2, \mu_2 \\
+\vdots \\
+\end{array} \middle\lvert \beta, V_{GCMC}
+\right)}
+{\pi
+\left(
+\begin{array}{c} 
+\textbf{r}_2, N_2, U_1, \mu_1 \\
+\textbf{r}_1, N_1, U_2, \mu_2 \\
+\vdots \\
+\end{array} \middle\lvert \beta, V_{GCMC}
+\right)} \\
+&= \frac
+{exp(N_2 B_1 - \beta U_1(\textbf{r}_2))exp(N_1 B_2 - \beta U_2(\textbf{r}_1))}
+{exp(N_1 B_1 - \beta U_1(\textbf{r}_1))exp(N_2 B_2 - \beta U_2(\textbf{r}_2))}
+\end{align}
+$$
+Reduced Energy Matrix:
+$$
+E_{ij} = N_i B_j - \beta U_j(\textbf{r}_i)
+$$
+
 ## 1.2.1
 `NonequilibriumGCMCSphereSamplerMultiState` is added for Hamiltonian replica exchange. 
 The implementation is validated by solvation free energy. 
