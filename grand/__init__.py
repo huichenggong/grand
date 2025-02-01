@@ -9,4 +9,7 @@ Chenggong Hui
 
 __version__ = "1.2.5_dev"
 
-# from grand import samplers, utils, potential, tests, grand_RE_MPI
+# Import submodules, potential.py, samplers.py, utils.py
+from . import potential
+from . import samplers
+from . import utils
