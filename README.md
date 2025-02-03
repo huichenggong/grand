@@ -54,20 +54,20 @@ conda remove -n grand_RE --all # remove the conda environment named grand_RE
 # Further development of GCMC
 ## 1.2.5 $\mu$ can be different for each replica.  
 Math:  
-Partition function, (replace $\beta \mu + ln(\frac{V^0}{V_{GCMC}})$ with $B$):  
+Partition function, (replace $\beta \mu + ln(\frac{V^o}{V_{GCMC}})$ with $B$):  
 
 $$
 \begin{align*}
-\pi(r_1, N_1, U_1, \mu_1, V^0_1 | \beta, V) * \pi(r_2, N_2, U_2, \mu_2, V^0_2 | \beta, V) ...
+\pi(r_1, N_1, U_1, \mu_1, V^o_1 | \beta, V) * \pi(r_2, N_2, U_2, \mu_2, V^o_2 | \beta, V) ...
 &=
 \frac{1}{Z_1}
-\frac{V^{N_1}}{{V^0_1}^{N_1} N_1!}
+\frac{V^{N_1}}{{(V^o_1)}^{N_1} N_1!}
 {exp \Big(-\beta \big(U_1(\textbf{r}_1) -\mu N_1 \big) \Big)}
 ...  \\
 &=
 \frac{1}{Z_1}
 \frac{1}{N_1!}
-{exp \Big(N_1 (\beta\mu_1+ln(\frac{V^0_1}{V}))-\beta U_1 (\textbf{r}_1) \Big)}
+{exp \Big(N_1 (\beta\mu_1+ln(\frac{V^o_1}{V}))-\beta U_1 (\textbf{r}_1) \Big)}
 ...  \\
 &=
 \frac{1}{Z_1}
