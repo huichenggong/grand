@@ -66,7 +66,7 @@ class PDBRestartReporter(object):
 
 def get_data_file(filename):
     """
-    Get the absolute path of one of the data files included in the package
+    Get the absolute path of one of the data files/folder included in the package
 
     Parameters
     ----------
@@ -79,7 +79,7 @@ def get_data_file(filename):
         Name of the file including the path
     """
     filepath = os.path.join(os.path.dirname(__file__), "data", filename)
-    if os.path.isfile(filepath):
+    if os.path.isfile(filepath) or os.path.isdir(filepath):
         return filepath
     else:
         raise Exception("{} does not exist!".format(filepath))
