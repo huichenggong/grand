@@ -1,5 +1,6 @@
 from pathlib import Path
 import gzip
+import os
 
 import pytest
 from mpi4py import MPI
@@ -8,7 +9,7 @@ import numpy as np
 from openmm import app, unit, openmm
 from openmmtools.integrators import BAOABIntegrator
 
-from grand import samplers
+from grand import samplers, utils
 
 
 def check_water_paramters(gcncmc_mover, topology, g_list):
@@ -46,14 +47,14 @@ def check_water_paramters(gcncmc_mover, topology, g_list):
                 assert sigma == pytest.approx(sig_ans)
                 assert epsilon == pytest.approx(eps_ans)
 
-@pytest.mark.mpi(minsize=2)
+@pytest.mark.mpi(minsize=4)
 def test_exchange_identical_U():
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
     print(size, rank)
-    multi_dir = [Path(f"../data/tests/methane/{i}") for i in range(4)]
+    multi_dir = [Path(f"{utils.get_data_file('tests/methane')}/{i}") for i in range(4)]
     run_dir = multi_dir[rank]
 
     # load system
@@ -61,7 +62,8 @@ def test_exchange_identical_U():
         system = openmm.XmlSerializer.deserialize(f.read())
 
     # load topology
-    prmtop = app.AmberPrmtopFile("../data/tests/methane/06_solv.prmtop")
+
+    prmtop = app.AmberPrmtopFile(utils.get_data_file('tests/methane/06_solv.prmtop'))
     topology = prmtop.topology
 
     with open(run_dir/"ghost_list0.dat") as f:
