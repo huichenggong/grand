@@ -1388,17 +1388,6 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         n : int
             Number of moves to execute
         """
-        # Read in positions
-        self.context = context
-        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
-        self.positions = deepcopy(state.getPositions(asNumpy=True))
-        self.velocities = deepcopy(state.getVelocities(asNumpy=True))
-
-        # Update GCMC region based on current state
-        self.updateGCMCSphere(state)
-
-        # Set to NCMC integrator
-        self.compound_integrator.setCurrentIntegrator(1)
 
         #  Execute moves
         for i in range(n):
@@ -1411,11 +1400,6 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
                 # Attempt to delete a water
                 self.logger.info("Deletion")
                 self.deletionMove()
-            self.n_moves += 1
-            self.Ns.append(self.N)
-
-        # Set to MD integrator
-        self.compound_integrator.setCurrentIntegrator(0)
 
         return None
 
@@ -1423,6 +1407,16 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         """
         Carry out a nonequilibrium insertion move for a random water molecule
         """
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        self.positions = deepcopy(state.getPositions(asNumpy=True))
+        self.velocities = deepcopy(state.getVelocities(asNumpy=True))
+
+        # Update GCMC region based on current state
+        self.updateGCMCSphere(state)
+
+        # Set to NCMC integrator
+        self.compound_integrator.setCurrentIntegrator(1)
+
         # Store initial positions
         old_positions = deepcopy(self.positions)
 
@@ -1503,12 +1497,25 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.velocities = deepcopy(state.getVelocities(asNumpy=True))
             self.updateGCMCSphere(state)
 
+        self.compound_integrator.setCurrentIntegrator(0)
+        self.n_moves += 1
+        self.Ns.append(self.N)
         return None
 
     def deletionMove(self):
         """
         Carry out a nonequilibrium deletion move for a random water molecule
         """
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        self.positions = deepcopy(state.getPositions(asNumpy=True))
+        self.velocities = deepcopy(state.getVelocities(asNumpy=True))
+
+        # Update GCMC region based on current state
+        self.updateGCMCSphere(state)
+
+        # Set to NCMC integrator
+        self.compound_integrator.setCurrentIntegrator(1)
+
         # Store initial positions
         old_positions = deepcopy(self.positions)
 
@@ -1590,6 +1597,9 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.velocities = deepcopy(state.getVelocities(asNumpy=True))
             self.updateGCMCSphere(state)
 
+        self.compound_integrator.setCurrentIntegrator(0)
+        self.n_moves += 1
+        self.Ns.append(self.N)
         return None
 
     def reset(self):
@@ -1662,6 +1672,8 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         Replica exchange, neighbor swap
         In odd  cycle, swap 0-1, 2-3, 4-5, ...
         In even cycle, swap 1-2, 3-4, 5-6, ...
+        If U, mu(B), r, N are different, and beta, V are the same
+        The reduced energy is E_ij = N_i * B_j - beta * U_j (r_i)
         :return:
         """
         state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
