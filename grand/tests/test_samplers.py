@@ -77,9 +77,10 @@ def setup_GCMCSphereSampler():
                  {'name': 'CA', 'resname': 'ASN', 'resid': '43'}]
 
     gcmc_sphere_sampler = samplers.GCMCSphereSampler(system=system, topology=pdb.topology, temperature=300*kelvin,
-                                          referenceAtoms=ref_atoms, sphereRadius=4*angstroms,
-                                          ghostFile=os.path.join(outdir, 'bpti-ghost-wats.txt'),
-                                          log=os.path.join(outdir, 'gcmcspheresampler.log'))
+                                                     referenceAtoms=ref_atoms, sphereRadius=4*angstroms,
+                                                     ghostFile=os.path.join(outdir, 'bpti-ghost-wats.txt'),
+                                                     log=os.path.join(outdir, 'gcmcspheresampler.log'),
+                                                     overwrite = True)
 
     # Define a simulation
     integrator = NonequilibriumLangevinIntegrator(temperature=300*kelvin, collision_rate=1./picosecond, timestep=2.*femtoseconds)
@@ -420,9 +421,12 @@ class TestGCMCSphereSampler(unittest.TestCase):
                 os.remove(os.path.join(outdir, file))
 
         # Need to create the sampler
-        setup_GCMCSphereSampler()
+        # setup_GCMCSphereSampler()
 
         return None
+
+    def setUp(self):
+        setup_GCMCSphereSampler()
 
     def test_initialise(self):
         """
@@ -471,10 +475,11 @@ class TestGCMCSphereSampler(unittest.TestCase):
         assert gcmc_waters == gcmc_sphere_sampler.getWaterStatusResids(1)
         assert all(np.isclose(sphere_centre._value, gcmc_sphere_sampler.sphere_centre._value))
         assert N == gcmc_sphere_sampler.N
-        # print(len(ghost_wat_list), len(gcmc_waters), N)
-        # assert len(ghost_wat_list) == 7
-        # assert len(gcmc_waters) == 0
-        # assert N == 0
+
+        # make sure they are the correct value as manual counting
+        assert len(ghost_wat_list) == 5
+        assert len(gcmc_waters) == 2
+        assert N == 2
 
         return None
 
