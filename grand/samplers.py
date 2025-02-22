@@ -1269,8 +1269,8 @@ class StandardGCMCSphereSampler(GCMCSphereSampler):
 
 class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
     """
-    Class to carry out GCMC moves in OpenMM, using nonequilibrium candidate Monte Carlo (NCMC)
-    to boost acceptance rates
+    Class to carry out GCMC moves in OpenMM.
+    It can use nonequilibrium candidate Monte Carlo (NCMC) to boost acceptance rates.
     """
     def __init__(self, system, topology, temperature, integrator, adams=None,
                  excessChemicalPotential=-6.09*unit.kilocalories_per_mole, standardVolume=30.345*unit.angstroms**3,
@@ -1293,8 +1293,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             is the customised Langevin integrator found in openmmtools which uses BAOAB (VRORV) splitting.
         adams : float
             Adams B value for the simulation (dimensionless). Default is None,
-            if None, the B value is calculated from the box volume and chemical
-            potential
+            if None, the B value is calculated from the box volume (or sphere radius) and chemical potential
         excessChemicalPotential : simtk.unit.Quantity
             Excess chemical potential of the system that the simulation should be in equilibrium with, default is
             -6.09 kcal/mol. This should be the hydration free energy of water, and may need to be changed for specific
@@ -1320,7 +1319,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             Must contain 'name' and 'resname' as keys, and optionally 'resid' (recommended) and 'chain'
             e.g. [{'name': 'C1', 'resname': 'LIG', 'resid': '123'}]
         sphereRadius : simtk.unit.Quantity
-            Radius of the spherical GCMC region
+            Radius of the spherical GCMC region.
         sphereCentre : simtk.unit.Quantity
             Coordinates around which the GCMC sphere is based
         log : str
@@ -1633,6 +1632,64 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
                  adamsShift=0.0, nPertSteps=1, nPropStepsPerPert=1, timeStep=2 * unit.femtoseconds, lambdas=None,
                  ghostFile="gcmc-ghost-wats.txt", referenceAtoms=None, sphereRadius=None, sphereCentre=None,
                  log='gcmc.log', dcd=None, rst=None, overwrite=False):
+        """
+        Initialise the object to be used for sampling NCMC-enhanced water insertion/deletion moves with replica exchange
+        These properties can be different in replicas exchange.
+            adams
+            excessChemicalPotential
+            standardVolume
+        There properties cannot be different in replicas exchange.
+            sphereRadius
+
+        Parameters
+        ----------
+        system : openmm.openmm.System
+        topology : openmm.app.topology.Topology
+        temperature : simtk.unit.Quantity
+            Temperature of the simulation, must be in appropriate units
+        integrator : simtk.openmm.CustomIntegrator
+            Integrator to use to propagate the dynamics of the system. Currently want to make sure that this
+            is the customised Langevin integrator found in openmmtools which uses BAOAB (VRORV) splitting.
+        adams : float
+            Adams B value for the simulation (dimensionless). Default is None,
+            if None, the B value is calculated from the box volume (or sphere radius) and chemical potential
+        excessChemicalPotential : simtk.unit.Quantity
+            Excess chemical potential of the system that the simulation should be in equilibrium with, default is
+            -6.09 kcal/mol. This should be the hydration free energy of water, and may need to be changed for specific
+            simulation parameters.
+        standardVolume : simtk.unit.Quantity
+            Standard volume of water - corresponds to the volume per water molecule in bulk. The default value is 30.345 A^3
+        adamsShift : float
+            Shift the B value from Bequil, if B isn't explicitly set. Default is 0.0
+        nPertSteps : int
+            Number of pertubation steps over which to shift lambda between 0 and 1 (or vice versa).
+        nPropStepsPerPert : int
+            Number of propagation steps to carry out for
+        timeStep : simtk.unit.Quantity
+            Time step to use for non-equilibrium integration during the propagation steps
+        lambdas : list
+            Series of lambda values corresponding to the pathway over which the molecules are perturbed
+        ghostFile : str
+            Name of a file to write out the residue IDs of ghost water molecules. This is
+            useful if you want to visualise the sampling, as you can then remove these waters
+            from view, as they are non-interacting. Default is 'gcmc-ghost-wats.txt'
+        referenceAtoms : list
+            List containing dictionaries describing the atoms to use as the centre of the GCMC region
+            Must contain 'name' and 'resname' as keys, and optionally 'resid' (recommended) and 'chain'
+            e.g. [{'name': 'C1', 'resname': 'LIG', 'resid': '123'}]
+        sphereRadius : simtk.unit.Quantity
+            Radius of the spherical GCMC region.
+        sphereCentre : simtk.unit.Quantity
+            Coordinates around which the GCMC sphere is based
+        log : str
+            Name of the log file to write out
+        dcd : str
+            Name of the DCD file to write the system out to
+        rst : str
+            Name of the restart file to write out (.pdb or .rst7)
+        overwrite : bool
+            Indicates whether to overwrite already existing data
+        """
         super().__init__(system, topology, temperature, integrator, adams, excessChemicalPotential, standardVolume,
                          adamsShift, nPertSteps, nPropStepsPerPert, timeStep, lambdas, ghostFile, referenceAtoms,
                          sphereRadius, sphereCentre, log, dcd, rst, overwrite)
@@ -1640,12 +1697,18 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
-        self.all_positions = np.empty((self.size, system.getNumParticles(),  3), dtype=np.float64)
-        self.energy_array_all = np.zeros((self.size, self.size), dtype=np.float64)
-        self.ghost_list_all = None
+        self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
+        self.ghost_list_all_rep = None
+        self.position_all_rep = None
         self.logger.info(f"NonequilibriumGCMCSphereSamplerMultiState object initialised on Rank {self.rank}. Total ranks: {self.size}")
         # self.logger.info(f"mu = {self.excessChemicalPotential.value_in_unit(unit.kilojoule_per_mole)} kJ/mol, {self.excessChemicalPotential/self.kT} kT")
         self.re_cycle = 0
+
+        # mpi allgather, and check if sphereRadius is the same
+        sphere_radius_all = self.comm.allgather(self.sphere_radius.value_in_unit(unit.nanometer))
+        if not np.allclose(sphere_radius_all, sphere_radius_all[0]):
+            raise ValueError(f"sphere_radius is not the same in all rank. {sphere_radius_all} nm")
+
 
     def ghost_waters_to_val(self, ghost_list, lambda_val):
         """
@@ -1659,13 +1722,74 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
                     atoms.append(atom.index)
         self.adjustSpecificWater(atoms, lambda_val)
 
-    def allgather_pos(self, pos_local, ghost_list):
+
+    def calc_reduced_energy_array(self, E0, N, position, ghost_list, calc_only_neighbor=False):
         """
-        Share position and ghost_list between replicas
+        Calculate the non diagonal elements of reduced energy array.
+        If calc_only_neighbor is True, only calculate the -1 diagonal elements
         """
-        # Allgather position
-        self.comm.Allgather(np.ascontiguousarray(pos_local), self.all_positions)
-        self.ghost_list_all = self.comm.allgather(ghost_list)
+        reduced_energy = np.zeros(self.size, dtype=np.float64)
+        self.ghost_list_all_rep = self.comm.allgather(ghost_list)
+        if not calc_only_neighbor:
+            # All gather all position
+            self.position_all_rep = np.zeros((self.size, len(position), 3), dtype=np.float64)
+            self.comm.Allgather(np.ascontiguousarray(position.value_in_unit(unit.nanometer)), self.position_all_rep)
+            # all gather all N
+            self.N_all_rep = self.comm.allgather(N)
+            # all gather all ghost_list
+
+
+            # this is U_j, B_j, we iterate over all (N_i, r_i)
+            for i in range(self.size):
+                if i == self.rank:
+                    reduced_energy[i] = E0
+                else:
+                    # change all old_ghost to 1
+                    self.ghost_waters_to_val(ghost_list, 1.0)
+                    # change all new_ghost to 0
+                    self.ghost_waters_to_val(self.ghost_list_all_rep[i], 0.0)
+                    ghost_list = self.ghost_list_all_rep[i]
+                    # change position
+                    self.context.setPositions(self.position_all_rep[i] * unit.nanometer)
+                    # calculate the reduced energy
+                    state = self.context.getState(getEnergy=True)
+                    E_red = state.getPotentialEnergy() / self.kT - self.N_all_rep[i] * self.B
+                    reduced_energy[i] = E_red
+            self.ghost_waters_to_val(ghost_list, 1.0)
+            self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
+            self.comm.Allgather(np.ascontiguousarray(reduced_energy), self.reduced_energy_all_rep)
+        else:
+            reduced_energy[self.rank] = E0
+            self.position_all_rep = np.zeros((self.size, len(position), 3), dtype=np.float64)
+            self.position_all_rep[self.rank] = position
+            # calculate the -1 diagonal elements
+            pos_rece = np.empty_like(position)
+            for m_0, m_1 in ((0,1), (1,0)):
+                self.ghost_waters_to_val(ghost_list, 1.0)
+                if self.rank % 2 == m_0 and self.rank < self.size - 1:
+                    self.comm.Sendrecv(sendbuf=position, dest=self.rank+1, sendtag=0,
+                                       recvbuf=pos_rece, source=self.rank+1, recvtag=0)
+                    self.context.setPositions(pos_rece)
+                    ghost_list_rece = self.comm.sendrecv(ghost_list, source=self.rank+1, dest=self.rank+1)
+                    self.position_all_rep[self.rank + 1] = pos_rece
+                    self.ghost_waters_to_val(ghost_list_rece, 0.0)
+                    state = self.context.getState(getEnergy=True)
+                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
+                    E_red = state.getPotentialEnergy() / self.kT - N * self.B
+                    reduced_energy[self.rank+1] = E_red
+                elif self.rank % 2 == m_1 and self.rank > 0:
+                    self.comm.Sendrecv(sendbuf=position, dest=self.rank-1, sendtag=0,
+                                       recvbuf=pos_rece, source=self.rank-1, recvtag=0)
+                    self.context.setPositions(pos_rece)
+                    ghost_list_rece = self.comm.sendrecv(ghost_list, source=self.rank-1, dest=self.rank-1)
+                    self.position_all_rep[self.rank - 1] = pos_rece
+                    self.ghost_waters_to_val(ghost_list_rece, 0.0)
+                    state = self.context.getState(getEnergy=True)
+                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
+                    E_red = state.getPotentialEnergy() / self.kT - N * self.B
+                    reduced_energy[self.rank-1] = E_red
+            self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
+            self.comm.Allgather(np.ascontiguousarray(reduced_energy), self.reduced_energy_all_rep)
 
     def exchange_neighbor_swap(self, calc_only_neighbor=False):
         """
@@ -1673,71 +1797,37 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         In odd  cycle, swap 0-1, 2-3, 4-5, ...
         In even cycle, swap 1-2, 3-4, 5-6, ...
         If U, B(Adams, mu and V0), r, N are different, and beta, V_GCMC are the same
-        The reduced energy is E_ij = N_i * B_j - beta * U_j (r_i)
+        The reduced energy is E_ij = U_j (r_i) / (kT) - N_i * B_j
         :return:
         """
+        state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
         # updateGCMCSphere
+        self.updateGCMCSphere(state)
+
         # save water_status
+        water_status_old = deepcopy(self.water_status)
 
         # prepare position, ghost_list, N for MPI
-        # prepare reduced_energy_array
+        position_old = state.getPositions(asNumpy=True)
+        ghost_list_old = self.getWaterStatusResids(0)
+        N_old = self.N
 
-        # MPI
+        # prepare reduced_energy_array
+        self.reduced_energy_all_rep[:] = 0.0
 
         # calc energy
-
-        # rank 0 decide accept or reject
-
-        # set position, velocity, ghost_list, N, water_status
-
-
-        state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
-        pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer) # remove unit
-
-        ghost_list = self.getWaterStatusResids(0)
-        self.allgather_pos(pos_local, ghost_list)
-
-        # compute energy
-        energy_array = np.zeros(self.size, dtype=np.float64)
-        self.energy_array_all *= 0.0
-        energy_array[self.rank] = state.getPotentialEnergy() / self.kT
-
-        for i, (pos, g_list) in enumerate(zip(self.all_positions, self.ghost_list_all)):
-            if i == self.rank:
-                continue
-            # change all old_ghost to 1
-            self.ghost_waters_to_val(ghost_list, 1.0)
-            # change all new_ghost to 0
-            self.ghost_waters_to_val(g_list, 0.0)
-            ghost_list = g_list
-            # change position
-            self.context.setPositions(pos * unit.nanometer)
-            energy_array[i] = self.context.getState(getEnergy=True).getPotentialEnergy() / self.kT
-        # reset all ghost to 1
-        for resid, res in enumerate(self.topology.residues()):
-            self.setWaterStatus(resid, 2) # 2 means real water outside the sphere, will be corrected later in updateGCMCSphere
-        self.ghost_waters_to_val(ghost_list, 1.0)
-
-        # log energy
-        # msg = ",".join([str(e) for e in energy_array])
-        # self.logger.info(f"U(x_i)    : {msg}")
-        self.comm.Allgather(np.ascontiguousarray(energy_array), self.energy_array_all)
-        # log number of ghost waters, this will be usefull for MBAR
-        msg = ",".join([str(len(g_list)) for g_list in self.ghost_list_all])
-        self.logger.info(f"N(n_ghost): {msg}")
-        # log energy for all hamiltonian using this replica
-        reduced_energy = self.energy_array_all[:, self.rank].copy()
-        reduced_energy += len(self.ghost_list_all[self.rank]) * self.excessChemicalPotential / self.kT
-        msg = ",".join([str(e) for e in reduced_energy])
-        self.logger.info(f"U_i(x)-μN : {msg}")
+        E0 =  state.getPotentialEnergy() / self.kT - N_old * self.B ## diagonal elements
+        self.calc_reduced_energy_array(E0, N_old, position_old, ghost_list_old, calc_only_neighbor)
+        msg = ",".join([str(e) for e in self.reduced_energy_all_rep[self.rank, :]])
+        self.logger.info(f"U(r_i)/kB-N_i*B : {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
         if self.rank ==0:
             # In even cycle (0, 2, 4), test swap 0-1, 2-3, 4-5, ...
             acceptance_flag = {}
             for rep in range(self.re_cycle % 2, self.size-1, 2):
-                delta_energy = self.energy_array_all[rep+1, rep] + self.energy_array_all[rep, rep+1] \
-                               -self.energy_array_all[rep, rep] - self.energy_array_all[rep+1, rep+1]
+                delta_energy = self.reduced_energy_all_rep[rep+1, rep] + self.reduced_energy_all_rep[rep, rep+1] \
+                               -self.reduced_energy_all_rep[rep, rep] - self.reduced_energy_all_rep[rep+1, rep+1]
                 accept_prob = math.exp(-delta_energy)
                 if np.random.rand() < accept_prob:
                     acceptance_flag[rep]   = (rep+1, accept_prob, 1)
@@ -1774,20 +1864,27 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             self.context.setVelocities(recv_vel * unit.nanometer / unit.picosecond)
 
             # update ghost_list
-            ghost_list = self.ghost_list_all[neighbor]
+            ghost_list = self.ghost_list_all_rep[neighbor]
             self.ghost_waters_to_val(ghost_list, 0.0)
-            [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list]
+            # [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list]
 
             # set new positions
-            self.context.setPositions(self.all_positions[neighbor] * unit.nanometer)
+            self.context.setPositions(self.position_all_rep[neighbor] * unit.nanometer)
+
+            # sendrecv water_status_old
+            self.water_status = self.comm.sendrecv(water_status_old, source=neighbor, dest=neighbor)
+            self.N = len(self.getWaterStatusResids(1))
         else:
             # revert ghost_list
-            ghost_list = self.ghost_list_all[self.rank]
-            self.ghost_waters_to_val(ghost_list, 0.0)
-            [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list]
+            self.ghost_waters_to_val(ghost_list_old, 0.0)
+            # [self.setWaterStatus(res_ind, 0) for res_ind in ghost_list_old]
 
             # revert position
-            self.context.setPositions(pos_local * unit.nanometer)
+            self.context.setPositions(position_old)
+
+            # revert N, water_status
+            self.N = N_old
+            self.water_status = water_status_old
 
         self.updateGCMCSphere(self.context.getState(getPositions=True))
         self.re_cycle += 1
