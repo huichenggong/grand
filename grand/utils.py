@@ -1100,6 +1100,7 @@ class mmdp_parser:
         self.n_pert_steps = 399            # number of perturbation steps (Hamiltonian switching)
         self.n_prop_steps_per_pert = 50    # number of propagation steps per perturbation step (constant Hamiltonian, relaxation)
         self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1)]
+        self.calc_only_neighbor = False
 
     def read(self, input_mdp):
         with open(input_mdp) as f:
@@ -1144,6 +1145,10 @@ class mmdp_parser:
                 if input_param == "n_prop_steps_per_pert" : self.n_prop_steps_per_pert = int(inp_val)
                 if input_param == "md_gc_re_protocol"     :
                     self.add_md_gc_re_protocol(inp_val)
+                if input_param == "calc_only_neighbor":
+                    if   inp_val.lower() in ["yes", "on" , "t", "true"]:  self.calc_only_neighbor = True
+                    elif inp_val.lower() in ["no",  "off", "f", "false"]: self.calc_only_neighbor = False
+                    else : raise ValueError(f"{inp_val} is not a valid input for calc_only_neighbor")
         return self
 
     def add_pcoupltype(self, inp_val):
