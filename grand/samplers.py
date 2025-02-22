@@ -517,7 +517,7 @@ class BaseGrandCanonicalMonteCarloSampler(object):
             acc_rate = np.round(self.n_accepted * 100.0 / self.n_moves, 4)
         else:
             acc_rate = np.nan
-        mean_N = np.round(np.mean(self.Ns), 4)
+        mean_N = np.mean(self.Ns)
         # Print out a line describing the acceptance rate and sampling of N
         msg = "{} move(s) completed ({} accepted ({:.4f} %)). Current N = {}. Average N = {:.3f}".format(self.n_moves,
                                                                                                          self.n_accepted,
