@@ -1672,7 +1672,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         Replica exchange, neighbor swap
         In odd  cycle, swap 0-1, 2-3, 4-5, ...
         In even cycle, swap 1-2, 3-4, 5-6, ...
-        If U, mu(B), r, N are different, and beta, V are the same
+        If U, B(Adams, mu and V0), r, N are different, and beta, V_GCMC are the same
         The reduced energy is E_ij = N_i * B_j - beta * U_j (r_i)
         :return:
         """
