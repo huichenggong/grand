@@ -1667,7 +1667,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         self.comm.Allgather(np.ascontiguousarray(pos_local), self.all_positions)
         self.ghost_list_all = self.comm.allgather(ghost_list)
 
-    def exchange_neighbor_swap(self):
+    def exchange_neighbor_swap(self, calc_only_neighbor=False):
         """
         Replica exchange, neighbor swap
         In odd  cycle, swap 0-1, 2-3, 4-5, ...
@@ -1676,6 +1676,21 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         The reduced energy is E_ij = N_i * B_j - beta * U_j (r_i)
         :return:
         """
+        # updateGCMCSphere
+        # save water_status
+
+        # prepare position, ghost_list, N for MPI
+        # prepare reduced_energy_array
+
+        # MPI
+
+        # calc energy
+
+        # rank 0 decide accept or reject
+
+        # set position, velocity, ghost_list, N, water_status
+
+
         state = self.context.getState(getEnergy=True, getPositions=True, getVelocities=True)
         pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer) # remove unit
 
