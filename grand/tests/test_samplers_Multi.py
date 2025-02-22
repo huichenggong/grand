@@ -136,6 +136,7 @@ class TestNonequilibriumGCMCSphereSamplerMultiState(unittest.TestCase):
         sim = app.Simulation(self.topology, self.system, gcncmc_mover.compound_integrator)
         sim.context.setPeriodicBoxVectors(*s_restart.getPeriodicBoxVectors())
         sim.context.setPositions(s_restart.getPositions())
+        sim.context.setVelocities(s_restart.getVelocities())
         gcncmc_mover.initialise(sim.context, ghost_list)
         ghost_list = gcncmc_mover.getWaterStatusResids(0)
 
@@ -184,6 +185,13 @@ class TestNonequilibriumGCMCSphereSamplerMultiState(unittest.TestCase):
         state = gcncmc_mover.context.getState(getPositions=True)
         pos_local = state.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
         assert np.allclose(pos_local[0], pos_answer[rank])
+
+        # check if the velocity is swapped
+        vel_answer[0], vel_answer[1] = vel_answer[1], vel_answer[0]
+        vel_answer[2], vel_answer[3] = vel_answer[3], vel_answer[2]
+        state = sim.context.getState(getVelocities=True)
+        vel = state.getVelocities(asNumpy=True).value_in_unit(unit.nanometer/unit.picosecond)
+        assert np.allclose(vel[0], vel_answer[rank])
 
 
 @pytest.mark.mpi(minsize=4)
