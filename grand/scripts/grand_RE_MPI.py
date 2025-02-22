@@ -209,7 +209,6 @@ def main():
     # run the simulation
     gcncmc_mover.logger.info("Simulation starts")
     n_hours, n_minutes, n_seconds, elapsed_time = count_time(time_start)
-    time_up_flag = False
     while gcncmc_mover.re_cycle < args.re_cycle:
         time_up_flag = stop_simulation_bcast(rank, elapsed_time, args.maxh)
         if time_up_flag:
@@ -224,7 +223,7 @@ def main():
             elif step_name == "GC":
                 gcncmc_mover.move(sim.context, step_n)
             elif step_name == "RE":
-                gcncmc_mover.exchange_neighbor_swap()
+                gcncmc_mover.exchange_neighbor_swap(mmdp_inputs.calc_only_neighbor)
             else:
                 raise ValueError(f"Unknown step name: {step_name}")
         gcncmc_mover.report(sim)
