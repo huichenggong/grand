@@ -8,7 +8,9 @@ mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi
 mamba activate grand_RE
 pip instal .
 ```
-or use the `environment.yml` file. Change `cuda=12.3` according to the output of `nvidia-smi`.
+or use the `environment.yml` file.  
+Change `cuda=12.3` according to the output of `nvidia-smi`.  
+Change `openmpi=4.1.5` according to your HPC.  
 ```ymal
 name: grand_RE
 channels:
@@ -42,7 +44,7 @@ python -m ipykernel install --user --name grand_RE
 ```bash
 source /home/NAME/SOFTWARE/miniforge3/bin/activate grand_RE
 module add openmpi4/gcc/4.1.5 # example, be consistent with version inside the conda env
-which mpirun # check if the correct mpirun is used
+mpirun --version # check if the correct mpirun is used
 ```
 
 ## 1.X Uninstall
@@ -52,7 +54,7 @@ conda remove -n grand_RE --all # remove the conda environment named grand_RE
 ```
 
 # Further development of GCMC
-## 1.2.5 $\mu$ can be different for each replica.  
+## 1.2.5 $\mu$ and $V^o$ can be different for each replica.  
 Math:  
 Partition function, (replace $\beta \mu + ln(\frac{V^o}{V_{GCMC}})$ with $B$):  
 
@@ -98,7 +100,7 @@ $$
 Reduced Energy Matrix:
 
 $$
-E_{ij} = N_i B_j - \beta U_j( \textbf{r}_i )
+E_{ij} = \beta U_j( \textbf{r}_i ) - N_i B_j
 $$
 
 ## 1.2.1
