@@ -2,7 +2,7 @@
 ## 1.1 Install packages
 ```bash
 # mamba works the same as conda.
-mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi=4.1.5 mpi4py cuda=12.3 parmed
+mamba create -n grand_RE openmm openmmtools pymbar-core numpy mdanalysis openmpi=4.1.5 mpi4py cuda=12.3 parmed pyyaml
 # install specific openmpi/mpich on your cluster. 4.1.5 is only an example
 # install specific cuda version according to `nvidia-smi`. 12.3 is only an example
 mamba activate grand_RE
@@ -27,6 +27,7 @@ dependencies:
   - mpi4py
   - cuda=12.3
   - parmed
+  - pyyaml
   - pip:
     - git+https://github.com/huichenggong/grand.git
 ```
