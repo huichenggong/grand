@@ -1241,10 +1241,11 @@ class MDParams:
             "tau_t": unit.picoseconds,
             "ref_t": unit.kelvin,
             "gen_temp": unit.kelvin,
-            "res_fc": unit.kilojoule_per_mole / unit.nanometer**2,
-            "standard_volume": unit.nanometer**3,
-            "ex_potential": unit.kilojoule_per_mole,
+            "res_fc": unit.kilojoule_per_mole / unit.nanometer ** 2,
+            "ref_p": unit.bar,
             "surface_tension": unit.bar * unit.nanometer,
+            "ex_potential": unit.kilojoule_per_mole,
+            "standard_volume": unit.nanometer ** 3,
         }
 
         if key in unit_map:
