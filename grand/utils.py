@@ -18,6 +18,7 @@ import warnings
 import gzip
 import shutil
 
+import yaml
 from scipy.cluster import hierarchy
 import numpy as np
 
@@ -1188,6 +1189,73 @@ class mmdp_parser:
                 raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE cannot follow RE")
         if self.md_gc_re_protocol[0][0] == "RE" and self.md_gc_re_protocol[-1][0] == "RE":
             raise ValueError(f"Invalid input for md_gc_re_protocol: {inp_val} RE cannot follow RE")
+
+class MDParams:
+    """Class to manage MD parameters with default values and YAML overrides."""
+
+    def __init__(self, yaml_file=None):
+        # Default parameter values
+        self.integrator = "LangevinIntegrator"
+        self.dt = 0.002 * unit.picoseconds
+        self.nstmaxh = 1
+        self.nsteps = 50000
+        self.nstxout_compressed = 5000
+        self.nstdcd = 5000
+        self.nstenergy = 1000
+        self.tau_t = 2.0 * unit.picoseconds
+        self.ref_t = 300.0 * unit.kelvin
+        self.gen_vel = True
+        self.gen_temp = 300.0 * unit.kelvin
+        self.restraint = False
+        self.res_fc = 1000.0  * unit.kilojoule_per_mole / unit.nanometer**2
+        self.pcoupltype = None
+        self.ref_p = 1.0 * unit.bar
+        self.nstpcouple = 25
+        self.surface_tension = 0.0 * unit.bar * unit.nanometer
+        self.ex_potential = -26.5254 * unit.kilojoule_per_mole
+        self.standard_volume = 0.029814952 * unit.nanometer**3
+        self.n_pert_steps = 199
+        self.n_prop_steps_per_pert = 20
+        self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1)]
+
+        # Override with YAML file if provided
+        if yaml_file:
+            self.read_yaml(yaml_file)
+
+    def read_yaml(self, yaml_file):
+        """Load parameters from YAML file and override defaults."""
+        with open(yaml_file, "r") as file:
+            params = yaml.safe_load(file)
+
+        # Override default attributes only if provided in YAML
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, self._convert_unit(key, value))
+            else:
+                raise ValueError(f"Parameter '{key}' is not valid.")
+
+    def _convert_unit(self, key, value):
+        """Handle unit conversion based on parameter key."""
+        unit_map = {
+            "dt": unit.picoseconds,
+            "tau_t": unit.picoseconds,
+            "ref_t": unit.kelvin,
+            "gen_temp": unit.kelvin,
+            "res_fc": unit.kilojoule_per_mole / unit.nanometer**2,
+            "standard_volume": unit.nanometer**3,
+            "ex_potential": unit.kilojoule_per_mole,
+            "surface_tension": unit.bar * unit.nanometer,
+        }
+
+        if key in unit_map:
+            return value * unit_map[key]
+        else:
+            return value  # For parameters without explicit units
+
+    def __str__(self):
+        """Print parameters for easy checking."""
+        params = {attr: getattr(self, attr) for attr in dir(self) if not attr.startswith("_")}
+        return "\n".join(f"{k}: {v}" for k, v in params.items())
 
 def set_barostat(system, mdp_inputs):
     """

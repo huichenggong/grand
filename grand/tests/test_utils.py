@@ -4,6 +4,7 @@ Description
 This file contains functions written to test the functions in the grand.utils sub-module
 
 Marley Samways
+Chenggong Hui
 """
 
 import os
@@ -499,3 +500,9 @@ class TestUtils(unittest.TestCase):
         assert all([0.0 <= occ <= 1.0 for occ in occupancies])
 
         return None
+
+    def test_MDParams(self):
+        mdp = utils.MDParams()
+        print(str(mdp))
+        mdp.read_yaml("GCMC.yaml")
+        print(str(mdp))
