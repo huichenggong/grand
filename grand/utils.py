@@ -1212,10 +1212,11 @@ class MDParams:
         self.ref_p = 1.0 * unit.bar
         self.nstpcouple = 25
         self.surface_tension = 0.0 * unit.bar * unit.nanometer
-        self.ex_potential = -26.5254 * unit.kilojoule_per_mole
-        self.standard_volume = 0.029814952 * unit.nanometer**3
+        self.ex_potential = -26.4176 * unit.kilojoule_per_mole # +- 0.022
+        self.standard_volume = 2.96299369e-02 * unit.nanometer**3
         self.n_pert_steps = 199
         self.n_prop_steps_per_pert = 20
+        self.calc_only_neighbor = True
         self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1)]
 
         # Override with YAML file if provided

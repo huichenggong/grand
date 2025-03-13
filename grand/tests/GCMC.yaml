@@ -10,14 +10,12 @@ restraint: false
 pcoupltype: null
 ref_p: 1.0          # in bar
 standard_volume: 0.029814952  # in nm^3
-n_pert_steps: 399
-n_prop_steps_per_pert: 50
+n_pert_steps            : 199
+n_prop_steps_per_pert   : 50
+calc_only_neighbor      : false
+
 md_gc_re_protocol:
   - [ "MD", 100 ]
   - [ "GC", 1   ]
-  - [ "MD", 100 ]
-  - [ "RE", 1   ]
-  - [ "MD", 100 ]
-  - [ "RE", 1   ]
   - [ "MD", 100 ]
   - [ "RE", 1   ]

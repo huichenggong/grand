@@ -1727,16 +1727,16 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         """
         Calculate the non diagonal elements of reduced energy array.
         If calc_only_neighbor is True, only calculate the -1 diagonal elements
+        all ghost water will be set to lambda=1 in the end
         """
         reduced_energy = np.zeros(self.size, dtype=np.float64)
         self.ghost_list_all_rep = self.comm.allgather(ghost_list)
+        # all gather all N
+        self.N_all_rep = self.comm.allgather(N)
         if not calc_only_neighbor:
             # All gather all position
             self.position_all_rep = np.zeros((self.size, len(position), 3), dtype=np.float64)
             self.comm.Allgather(np.ascontiguousarray(position.value_in_unit(unit.nanometer)), self.position_all_rep)
-            # all gather all N
-            self.N_all_rep = self.comm.allgather(N)
-            # all gather all ghost_list
 
 
             # this is U_j, B_j, we iterate over all (N_i, r_i)
@@ -1758,41 +1758,53 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             self.ghost_waters_to_val(ghost_list, 1.0)
             self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
             self.comm.Allgather(np.ascontiguousarray(reduced_energy), self.reduced_energy_all_rep)
+            self.ghost_waters_to_val(ghost_list, 1.0)
         else:
             reduced_energy[self.rank] = E0
             self.position_all_rep = np.zeros((self.size, len(position), 3), dtype=np.float64)
             self.position_all_rep[self.rank] = position
             # calculate the -1 diagonal elements
             pos_rece = np.empty_like(position)
+            # change all old_ghost to 1
+            self.ghost_waters_to_val(ghost_list, 1.0)
             for m_0, m_1 in ((0,1), (1,0)):
-                self.ghost_waters_to_val(ghost_list, 1.0)
-                if self.rank % 2 == m_0 and self.rank < self.size - 1:
+                if self.rank % 2 == m_0 and self.rank < self.size - 1: # get configuration from rank+1
                     self.comm.Sendrecv(sendbuf=position, dest=self.rank+1, sendtag=0,
                                        recvbuf=pos_rece, source=self.rank+1, recvtag=0)
                     self.context.setPositions(pos_rece)
                     ghost_list_rece = self.comm.sendrecv(ghost_list, source=self.rank+1, dest=self.rank+1)
                     self.position_all_rep[self.rank + 1] = pos_rece
+                    # change all new_ghost to 0
                     self.ghost_waters_to_val(ghost_list_rece, 0.0)
+                    # calculate the reduced energy
                     state = self.context.getState(getEnergy=True)
-                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
-                    E_red = state.getPotentialEnergy() / self.kT - N * self.B
+                    E_red = state.getPotentialEnergy() / self.kT - self.N_all_rep[self.rank+1] * self.B
                     reduced_energy[self.rank+1] = E_red
-                elif self.rank % 2 == m_1 and self.rank > 0:
+                    # reset all water to 1.0
+                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
+                elif self.rank % 2 == m_1 and self.rank > 0: # # get configuration from rank-1
                     self.comm.Sendrecv(sendbuf=position, dest=self.rank-1, sendtag=0,
                                        recvbuf=pos_rece, source=self.rank-1, recvtag=0)
                     self.context.setPositions(pos_rece)
                     ghost_list_rece = self.comm.sendrecv(ghost_list, source=self.rank-1, dest=self.rank-1)
                     self.position_all_rep[self.rank - 1] = pos_rece
+                    # change all new_ghost to 0
                     self.ghost_waters_to_val(ghost_list_rece, 0.0)
+                    # calculate the reduced energy
                     state = self.context.getState(getEnergy=True)
-                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
-                    E_red = state.getPotentialEnergy() / self.kT - N * self.B
+                    E_red = state.getPotentialEnergy() / self.kT - self.N_all_rep[self.rank-1] * self.B
                     reduced_energy[self.rank-1] = E_red
+                    # reset all water to 1.0
+                    self.ghost_waters_to_val(ghost_list_rece, 1.0)
+
             self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
             self.comm.Allgather(np.ascontiguousarray(reduced_energy), self.reduced_energy_all_rep)
 
-    def exchange_neighbor_swap(self, calc_only_neighbor=False):
+    def exchange_neighbor_swap(self, calc_only_neighbor=False, exchange=True):
         """
+        Param:
+        calc_only_neighbor: whether to only calculate the reduced energy on the neighber, default False
+        exchange : for debugging, default True
         Replica exchange, neighbor swap
         In odd  cycle, swap 0-1, 2-3, 4-5, ...
         In even cycle, swap 1-2, 3-4, 5-6, ...
@@ -1818,8 +1830,8 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         # calc energy
         E0 =  state.getPotentialEnergy() / self.kT - N_old * self.B ## diagonal elements
         self.calc_reduced_energy_array(E0, N_old, position_old, ghost_list_old, calc_only_neighbor)
-        msg = ",".join([str(e) for e in self.reduced_energy_all_rep[self.rank, :]])
-        self.logger.info(f"U(r_i)/kB-N_i*B : {msg}")
+        msg = ",".join([str(e) for e in self.reduced_energy_all_rep[:, self.rank]])
+        self.logger.info(f"U_i(x)-μ_i*N : {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
         if self.rank ==0:
@@ -1829,7 +1841,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
                 delta_energy = self.reduced_energy_all_rep[rep+1, rep] + self.reduced_energy_all_rep[rep, rep+1] \
                                -self.reduced_energy_all_rep[rep, rep] - self.reduced_energy_all_rep[rep+1, rep+1]
                 accept_prob = math.exp(-delta_energy)
-                if np.random.rand() < accept_prob:
+                if np.random.rand() < accept_prob and exchange:
                     acceptance_flag[rep]   = (rep+1, accept_prob, 1)
                     acceptance_flag[rep+1] = (rep, accept_prob, 1)
                 else:
