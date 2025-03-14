@@ -1831,7 +1831,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
         E0 =  state.getPotentialEnergy() / self.kT - N_old * self.B ## diagonal elements
         self.calc_reduced_energy_array(E0, N_old, position_old, ghost_list_old, calc_only_neighbor)
         msg = ",".join([str(e) for e in self.reduced_energy_all_rep[:, self.rank]])
-        self.logger.info(f"U_i(x)-μ_i*N : {msg}")
+        self.logger.info(f"U_i(x)-N_i*B : {msg}")
 
         # rank 0 decide the swap and broadcast the acceptance_flag
         if self.rank ==0:
