@@ -1217,7 +1217,7 @@ class MDParams:
         self.n_pert_steps = 199
         self.n_prop_steps_per_pert = 20
         self.calc_only_neighbor = True
-        self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1)]
+        self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1), ("MD", 100), ("RE", 1), ("MD", 100), ("RE", 1)]
 
         # Override with YAML file if provided
         if yaml_file:
