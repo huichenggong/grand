@@ -90,8 +90,8 @@ def main():
     parser.add_argument("-sys", metavar="     sys.xml.gz   ", default="sys.xml.gz",
                         help="Serialized system file. It will be loaded as a `openmm.System` object. This system should "
                              "include all bonded/non-bonded, constraints, but not pressure coupling. It can be xml or xml.gz.")
-    parser.add_argument("-mmdp", metavar="    md.mmdp      ", default="md.mmdp", required=True,
-                        help="Input file with MD parameters. Only limited gmx mdp keywords are supported.")
+    parser.add_argument("-mdpyml", metavar="  md.mmdp      ", default="mdp.yaml", required=True,
+                        help="Input MD parameters.")
     parser.add_argument("-multidir", metavar="multi_dir    ", required=True, nargs='+',
                         type=Path,
                         help="The directory for the multi-simulation. If not provided, simulation cannot be run.")
@@ -157,26 +157,26 @@ def main():
         ghost_list = [int(i) for i in line.split(",")]
 
     # load simulation parameters
-    mmdp_inputs = grand.utils.mmdp_parser().read( args.mmdp )
+    mdp_inputs = grand.utils.MDParams(run_dir/args.mdpyml)
 
     # load atom selection
     with open(args.atom, 'r') as f:
         atoms_region = json.load(f)
 
     # set up integrator
-    integrator = BAOABIntegrator(mmdp_inputs.ref_t, 1 / mmdp_inputs.tau_t, mmdp_inputs.dt)
+    integrator = BAOABIntegrator(mdp_inputs.ref_t, 1 / mdp_inputs.tau_t, mdp_inputs.dt)
 
     # set up sampler
     gcncmc_mover = grand.samplers.NonequilibriumGCMCSphereSamplerMultiState(
         system=system,
         topology=topology,
-        temperature=mmdp_inputs.ref_t,
-        timeStep=mmdp_inputs.dt,
+        temperature=mdp_inputs.ref_t,
+        timeStep=mdp_inputs.dt,
         integrator=integrator,
-        nPertSteps=mmdp_inputs.n_pert_steps,  # number of perturbation steps (Hamiltonian switching)
-        nPropStepsPerPert=mmdp_inputs.n_prop_steps_per_pert,  # number of propagation steps per perturbation step (constant Hamiltonian, relaxation)
-        excessChemicalPotential=mmdp_inputs.ex_potential,
-        standardVolume=mmdp_inputs.standard_volume,
+        nPertSteps=mdp_inputs.n_pert_steps,  # number of perturbation steps (Hamiltonian switching)
+        nPropStepsPerPert=mdp_inputs.n_prop_steps_per_pert,  # number of propagation steps per perturbation step (constant Hamiltonian, relaxation)
+        excessChemicalPotential=mdp_inputs.ex_potential,
+        standardVolume=mdp_inputs.standard_volume,
         referenceAtoms=atoms_region["ref_atoms"],
         sphereRadius=atoms_region["radius"] * unit.nanometer,
         log=run_dir/args.olog,
@@ -204,7 +204,7 @@ def main():
     if len(set(cycle_list)) != 1:
         raise ValueError(f"Replica Exchange Cycle number is not the same in all replicas: {cycle_list}")
 
-    log_simulation_info(args, mmdp_inputs, gcncmc_mover)
+    log_simulation_info(args, mdp_inputs, gcncmc_mover)
 
     # run the simulation
     gcncmc_mover.logger.info("Simulation starts")
@@ -216,14 +216,14 @@ def main():
             break
 
         # Actual simulation, execute md_gc_re_protocol
-        for step_name, step_n in mmdp_inputs.md_gc_re_protocol:
+        for step_name, step_n in mdp_inputs.md_gc_re_protocol:
             gcncmc_mover.logger.info(f"{step_name} : {step_n}")
             if step_name == "MD":
                 sim.step(step_n)
             elif step_name == "GC":
                 gcncmc_mover.move(sim.context, step_n)
             elif step_name == "RE":
-                gcncmc_mover.exchange_neighbor_swap(mmdp_inputs.calc_only_neighbor)
+                gcncmc_mover.exchange_neighbor_swap(mdp_inputs.calc_only_neighbor)
             else:
                 raise ValueError(f"Unknown step name: {step_name}")
         gcncmc_mover.report(sim)
