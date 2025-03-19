@@ -70,7 +70,8 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         self.logger.setLevel(logging.DEBUG)
         file_handler = logging.FileHandler(log)
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(message)s'))
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(message)s',
+                                                    "%m-%d %H:%M:%S"))
         self.logger.addHandler(file_handler)
 
         # Set important variables here
@@ -1800,7 +1801,7 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             self.reduced_energy_all_rep = np.zeros((self.size, self.size), dtype=np.float64)
             self.comm.Allgather(np.ascontiguousarray(reduced_energy), self.reduced_energy_all_rep)
 
-    def exchange_neighbor_swap(self, calc_only_neighbor=False, exchange=True):
+    def exchange_neighbor_swap(self, calc_only_neighbor=False, log_exchange=True, exchange=True):
         """
         Param:
         calc_only_neighbor: whether to only calculate the reduced energy on the neighber, default False
@@ -1852,11 +1853,12 @@ class NonequilibriumGCMCSphereSamplerMultiState(NonequilibriumGCMCSphereSampler)
             acceptance_flag = None
         acceptance_flag = self.comm.bcast(acceptance_flag, root=0)
         # log acceptance_flag
-        x_dict = {1:"x", 0:" "}
-        msg1 = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
-        msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
-        self.logger.info(msg1)
-        self.logger.info(msg2)
+        if log_exchange:
+            x_dict = {1:"x", 0:" "}
+            msg1 = " ".join(["Repl ex", '     ' * (self.re_cycle%2)] + [f"{k:2} {x_dict[v[2]]} {v[0]:2}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+            msg2 = " ".join(["Repl pr", '     ' * (self.re_cycle%2)] + [f"{min(1,v[1]):7.5f}  " for i, (k, v) in enumerate( acceptance_flag.items() ) if i%2 == 0])
+            self.logger.info(msg1)
+            self.logger.info(msg2)
 
         # Exchange velocities according to acceptance_flag
         if self.rank in acceptance_flag and acceptance_flag[self.rank][2] == 1:

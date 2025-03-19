@@ -153,7 +153,7 @@ class TestNonequilibriumGCMCSphereSamplerMultiState(unittest.TestCase):
 
         # Let's try an exchange here, the acceptance ratio should be 1
         calc_only_neighbor = False
-        gcncmc_mover.exchange_neighbor_swap(calc_only_neighbor)
+        gcncmc_mover.exchange_neighbor_swap(calc_only_neighbor=calc_only_neighbor)
         assert np.allclose(gcncmc_mover.position_all_rep[rank, 0], pos_answer[rank])
 
         gcncmc_mover.report(sim)

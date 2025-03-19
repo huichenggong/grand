@@ -1193,7 +1193,7 @@ class mmdp_parser:
 class MDParams:
     """Class to manage MD parameters with default values and YAML overrides."""
 
-    def __init__(self, yaml_file=None):
+    def __init__(self, yml_file=None):
         # Default parameter values
         self.integrator = "LangevinIntegrator"
         self.dt = 0.002 * unit.picoseconds
@@ -1220,10 +1220,10 @@ class MDParams:
         self.md_gc_re_protocol = [("MD", 100), ("GC", 2), ("MD", 100), ("RE", 1), ("MD", 100), ("RE", 1), ("MD", 100), ("RE", 1)]
 
         # Override with YAML file if provided
-        if yaml_file:
-            self.read_yaml(yaml_file)
+        if yml_file:
+            self.read_yml(yml_file)
 
-    def read_yaml(self, yaml_file):
+    def read_yml(self, yaml_file):
         """Load parameters from YAML file and override defaults."""
         with open(yaml_file, "r") as file:
             params = yaml.safe_load(file)

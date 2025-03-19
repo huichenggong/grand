@@ -504,5 +504,5 @@ class TestUtils(unittest.TestCase):
     def test_MDParams(self):
         mdp = utils.MDParams()
         print(mdp)
-        mdp.read_yaml("GCMC.yaml")
+        mdp.read_yml("GCMC.yaml")
         print(mdp)

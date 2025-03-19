@@ -223,7 +223,8 @@ def main():
             elif step_name == "GC":
                 gcncmc_mover.move(sim.context, step_n)
             elif step_name == "RE":
-                gcncmc_mover.exchange_neighbor_swap(mdp_inputs.calc_only_neighbor)
+                gcncmc_mover.exchange_neighbor_swap(calc_only_neighbor = mdp_inputs.calc_only_neighbor,
+                                                    log_exchange = rank == 0)
             else:
                 raise ValueError(f"Unknown step name: {step_name}")
         gcncmc_mover.report(sim)
