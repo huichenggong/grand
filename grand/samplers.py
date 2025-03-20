@@ -410,6 +410,67 @@ class BaseGrandCanonicalMonteCarloSampler(object):
         value = self.water_status[resid]
         return value
 
+    def checkWaterStatus(self):
+        """
+        All ghost water should have
+            0 lambda_vdw in self.custom_nb_force,
+            0 charge in the self.nonbonded_force
+        Normal water should have
+            1 lambda_vdw in self.custom_nb_force,
+            abs(charge) > 0.4
+        This function is for debugging purposes
+        """
+        correct_flag = True
+        res_list = list(self.topology.residues())
+        for resid, val in self.water_status.items():
+            if val == 0:
+                for atom in res_list[resid].atoms():
+                    atom_idx = atom.index
+                    # Check charge in nonbonded_force
+                    charge, sigma, epsilon = self.nonbonded_force.getParticleParameters(atom_idx)
+                    if not np.isclose(charge.value_in_unit(unit.elementary_charge), 0.0):
+                        self.logger.error(f"charge is not zero for atom {atom_idx} in residue {resid}")
+                        correct_flag = False
+
+                    # Check lambda in custom_nb_force
+                    if self.force_field_name == "Amber":
+                        sigma, epsilon, lambda_vdw = self.custom_nb_force.getParticleParameters(atom_idx)
+                        if not np.isclose(lambda_vdw, 0.0):
+                            self.logger.error(f"lambda_vdw is not zero for atom {atom_idx} in residue {resid}")
+                            correct_flag = False
+                    elif self.force_field_name == "Charmm":
+                        typ, lam = self.custom_nb_force.getParticleParameters(atom_idx)
+                        if not np.isclose(lam, 0.0):
+                            self.logger.error(f"lambda is not zero for atom {atom_idx} in residue {resid}")
+                            correct_flag = False
+                    else:
+                        self.logger.error(f"{self.force_field_name} Force field not recognised. Cannot do checkWaterStatus")
+                        correct_flag = False
+            else:
+                for atom in res_list[resid].atoms():
+                    atom_idx = atom.index
+                    # Check charge in nonbonded_force
+                    charge, sigma, epsilon = self.nonbonded_force.getParticleParameters(atom_idx)
+                    if np.abs(charge.value_in_unit(unit.elementary_charge)) < 0.4:
+                        self.logger.error(f"charge is {charge.value_in_unit(unit.elementary_charge)} for {atom}")
+                        correct_flag = False
+
+                    # Check lambda in custom_nb_force
+                    if self.force_field_name == "Amber":
+                        sigma, epsilon, lambda_vdw = self.custom_nb_force.getParticleParameters(atom_idx)
+                        if not np.isclose(lambda_vdw, 1.0):
+                            self.logger.error(f"lambda_vdw is not 1 for atom {atom_idx} in residue {resid}")
+                            correct_flag = False
+                    elif self.force_field_name == "Charmm":
+                        typ, lam = self.custom_nb_force.getParticleParameters(atom_idx)
+                        if not np.isclose(lam, 1.0):
+                            self.logger.error(f"lambda is not 1 for atom {atom_idx} in residue {resid}")
+                            correct_flag = False
+                    else:
+                        self.logger.error(f"{self.force_field_name} Force field not recognised. Cannot do checkWaterStatus")
+                        correct_flag = False
+        return correct_flag
+
     def deleteGhostWaters(self, ghostResids=None, ghostFile=None):
         """
         Switch off nonbonded interactions involving the ghost molecules initially added
