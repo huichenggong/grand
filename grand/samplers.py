@@ -735,6 +735,8 @@ class GCMCSphereSampler(BaseGrandCanonicalMonteCarloSampler):
         self.logger.info("GCMC sphere radius is {}".format(self.sphere_radius))
 
         # Set or calculate the Adams value for the simulation
+        self.excessChemicalPotential = excessChemicalPotential
+        self.standardVolume = standardVolume
         if adams is not None:
             self.B = adams
         else:
@@ -863,6 +865,11 @@ class GCMCSphereSampler(BaseGrandCanonicalMonteCarloSampler):
         state = self.context.getState(getPositions=True, enforcePeriodicBox=True)
         self.positions = deepcopy(state.getPositions(asNumpy=True))
         box_vectors = state.getPeriodicBoxVectors(asNumpy=True)
+        volume_box = (box_vectors[0, 0]
+                      * box_vectors[1, 1]
+                      * box_vectors[2, 2]
+                      )
+        self.B_box = self.excessChemicalPotential / self.kT + math.log(volume_box / self.standardVolume)
 
         # Check the symmetry of the box - currently only tolerate cuboidal boxes
         # All off-diagonal box vector components must be zero
@@ -1438,7 +1445,7 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
 
         self.logger.info("NonequilibriumGCMCSphereSampler object initialised")
 
-    def move(self, context, n=1):
+    def move(self, context, n=1, box=False):
         """
         Carry out a nonequilibrium GCMC move
 
@@ -1451,16 +1458,28 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
         """
 
         #  Execute moves
-        for i in range(n):
-            # Insert or delete a water, based on random choice
-            if np.random.randint(2) == 1:
-                # Attempt to insert a water
-                self.logger.info("Insertion")
-                self.insertionMove()
-            else:
-                # Attempt to delete a water
-                self.logger.info("Deletion")
-                self.deletionMove()
+        if box:
+            for i in range(n):
+                # Insert or delete a water, based on random choice
+                if np.random.randint(2) == 1:
+                    # Attempt to insert a water
+                    self.logger.info("Insertion, Box mode")
+                    self.insertionMoveBox()
+                else:
+                    # Attempt to delete a water
+                    self.logger.info("Deletion, Box mode")
+                    self.deletionMoveBox()
+        else:
+            for i in range(n):
+                # Insert or delete a water, based on random choice
+                if np.random.randint(2) == 1:
+                    # Attempt to insert a water
+                    self.logger.info("Insertion")
+                    self.insertionMove()
+                else:
+                    # Attempt to delete a water
+                    self.logger.info("Deletion")
+                    self.deletionMove()
 
         return None
 
@@ -1531,11 +1550,11 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             # If the inserted water leaves the sphere, the move cannot be reversed and therefore cannot be accepted
             acc_prob = -1
             self.n_left_sphere += 1
-            self.logger.info("Move rejected due to water leaving the GCMC sphere")
+            self.logger.info(f"Move rejected due to water leaving the GCMC sphere. W={protocol_work}")
         elif N_new != N_old + 1:
             # The end state of non-eq process is not N+1
             acc_prob = -1
-            self.logger.info(f"Move rejected due to NCMC move ends at N {N_new - N_old:+d} (Should be +1).")
+            self.logger.info(f"Move rejected due to NCMC move ends at N {N_new - N_old:+d} (Should be +1). W={protocol_work}")
         elif explosion:
             acc_prob = -1
             self.logger.info("Move rejected due to an instability during integration")
@@ -1639,10 +1658,10 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             # If the deleted water leaves the sphere, the move cannot be reversed and therefore cannot be accepted
             acc_prob = -1
             self.n_left_sphere += 1
-            self.logger.info("Move rejected due to water leaving the GCMC sphere")
+            self.logger.info(f"Move rejected due to water leaving the GCMC sphere. W={protocol_work}")
         elif N_new != N_old - 1:
             acc_prob = -1
-            self.logger.info(f"Move rejected due to NCMC move ends at N {N_new - N_old:+d} (Should be -1).")
+            self.logger.info(f"Move rejected due to NCMC move ends at N {N_new - N_old:+d} (Should be -1). W={protocol_work}")
         elif explosion:
             acc_prob = -1
             self.logger.info("Move rejected due to an instability during integration")
@@ -1672,6 +1691,203 @@ class NonequilibriumGCMCSphereSampler(GCMCSphereSampler):
             self.positions = deepcopy(state.getPositions(asNumpy=True))
             self.velocities = deepcopy(state.getVelocities(asNumpy=True))
             # self.updateGCMCSphere(state)
+
+        self.compound_integrator.setCurrentIntegrator(0)
+        self.n_moves += 1
+        self.Ns.append(self.N)
+        return None
+
+    def insertionMoveBox(self):
+        """
+        Carry out a nonequilibrium insertion move for a random water molecule
+        Consider the whole box as GCMC region, but we limit the path to be :"Perturbed water can only start and end inside the sphere"
+        """
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        positions_old = state.getPositions(asNumpy=True)
+        velocities_old = state.getVelocities(asNumpy=True)
+        water_status_old = deepcopy(self.water_status)
+        self.positions = positions_old
+
+        # Update GCMC region based on current state
+        self.updateGCMCSphere(state)
+        N_old = len(self.getWaterStatusResids(1)) + len(self.getWaterStatusResids(2))
+
+        # Set to NCMC integrator
+        self.compound_integrator.setCurrentIntegrator(1)
+
+        self.context.setVelocities(-velocities_old)
+
+        # Choose a random site in the sphere to insert a water
+        positions_start, resid, atom_indices = self.insertRandomWater()
+
+        # Need to update the context positions
+        self.context.setPositions(positions_start)
+
+        # Start running perturbation and propagation kernels
+        protocol_work = 0.0 * unit.kilocalories_per_mole
+        explosion = False
+        self.ncmc_integrator.step(self.n_prop_steps_per_pert)
+        for i in range(self.n_pert_steps):
+            state = self.context.getState(getEnergy=True)
+            energy_initial = state.getPotentialEnergy()
+            # Adjust interactions of this water
+            self.adjustSpecificWater(atom_indices, self.lambdas[i+1])
+            state = self.context.getState(getEnergy=True)
+            energy_final = state.getPotentialEnergy()
+            protocol_work += energy_final - energy_initial
+            # Propagate the system
+            try:
+                self.ncmc_integrator.step(self.n_prop_steps_per_pert)
+            except:
+                # print("Caught explosion!")
+                self.logger.warning("Explosion in insertion!!!")
+                explosion = True
+                self.n_explosions += 1
+                break
+
+        # Store the protocol work
+        self.insert_works.append(protocol_work)
+
+        # Update variables and GCMC sphere
+        self.setWaterStatus(resid, 1)
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        self.updateGCMCSphere(state)  # update N counting
+        N_new = N_old + 1
+
+        # Check which waters are in the sphere
+        wats_in_sphere = self.getWaterStatusResids(1)
+
+        # Calculate acceptance probability
+        if resid not in wats_in_sphere:
+            # If the inserted water leaves the sphere, the move cannot be reversed and therefore cannot be accepted
+            acc_prob = -1
+            self.n_left_sphere += 1
+            self.logger.info(f"Move rejected due to water leaving the GCMC sphere. W={protocol_work}")
+        elif explosion:
+            acc_prob = -1
+            self.logger.info("Move rejected due to an instability during integration")
+        else:
+            # Calculate acceptance probability based on protocol work
+            acc_prob = math.exp(self.B_box) * math.exp(-protocol_work/self.kT) / N_new  # Here N is the new value
+            self.logger.info(f"Protocol work: {protocol_work}, acceptance ratio: {acc_prob}")
+
+        self.acceptance_probabilities.append(acc_prob)
+
+        # Update or reset the system, depending on whether the move is accepted or rejected
+        if acc_prob < np.random.rand() or np.isnan(acc_prob):
+            # Reject. Revert the changes
+            self.adjustSpecificWater(atom_indices, 0.0)
+            self.context.setPositions(positions_old)
+            self.context.setVelocities(velocities_old)
+            self.positions = positions_old
+            self.velocities = velocities_old
+            self.water_status = water_status_old
+        else:
+            # Accept. Update some variables if move is accepted
+            # self.N = len(wats_in_sphere)
+            self.n_accepted += 1
+            # state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+            self.positions = state.getPositions(asNumpy=True)
+            self.velocities = state.getVelocities(asNumpy=True)
+
+        self.compound_integrator.setCurrentIntegrator(0)
+        self.n_moves += 1
+        self.Ns.append(self.N)
+        return None
+
+    def deletionMoveBox(self):
+        """
+        Carry out a nonequilibrium deletion move for a random water molecule
+        Consider the whole box as GCMC region, but we limit the path to be :"Perturbed water can only start and end inside the sphere"
+        """
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        positions_old = state.getPositions(asNumpy=True)
+        velocities_old = state.getVelocities(asNumpy=True)
+        water_status_old = deepcopy(self.water_status)
+        self.positions = positions_old
+
+        # Update GCMC region based on current state
+        self.updateGCMCSphere(state)
+        N_old = len(self.getWaterStatusResids(1)) + len(self.getWaterStatusResids(2))
+
+        # Set to NCMC integrator
+        self.compound_integrator.setCurrentIntegrator(1)
+
+        self.context.setVelocities(-velocities_old)
+
+        # Choose a random water in the sphere to be deleted
+        resid, atom_indices = self.deleteRandomWater()
+        # Deletion may not be possible
+        if resid is None:
+            self.logger.error("Cannot delete, because there is no ghost water.")
+            return None
+
+        # Start running perturbation and propagation kernels
+        protocol_work = 0.0 * unit.kilocalories_per_mole
+        explosion = False
+        self.ncmc_integrator.step(self.n_prop_steps_per_pert)
+        for i in range(self.n_pert_steps):
+            state = self.context.getState(getEnergy=True)
+            energy_initial = state.getPotentialEnergy()
+            # Adjust interactions of this water
+            self.adjustSpecificWater(atom_indices, self.lambdas[-(2+i)])
+            state = self.context.getState(getEnergy=True)
+            energy_final = state.getPotentialEnergy()
+            protocol_work += energy_final - energy_initial
+            # Propagate the system
+            try:
+                self.ncmc_integrator.step(self.n_prop_steps_per_pert)
+            except:
+                # print("Caught explosion!")
+                self.logger.warning("Explosion in deletion!!!")
+                explosion = True
+                self.n_explosions += 1
+                break
+
+        # Get the protocol work
+        self.delete_works.append(protocol_work)
+
+        # Update variables and GCMC sphere
+        # Leaving the water as 'on' here to check that the deleted water doesn't leave
+        state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+        self.updateGCMCSphere(state) # update N counting
+        N_new = N_old - 1
+
+        # Check which waters are in the sphere
+        wats_in_sphere = self.getWaterStatusResids(1)
+
+        # Calculate acceptance probability
+        if resid not in wats_in_sphere:
+            # If the deleted water leaves the sphere, the move cannot be reversed and therefore cannot be accepted
+            acc_prob = -1
+            self.n_left_sphere += 1
+            self.logger.info(f"Move rejected due to water leaving the GCMC sphere. W={protocol_work}")
+        elif explosion:
+            acc_prob = -1
+            self.logger.info("Move rejected due to an instability during integration")
+        else:
+            # Calculate acceptance probability based on protocol work
+            acc_prob = N_old * math.exp(-self.B_box) * math.exp(-protocol_work/self.kT)  # N is the old value
+            self.logger.info(f"Protocol work: {protocol_work}, acceptance ratio: {acc_prob}")
+
+        self.acceptance_probabilities.append(acc_prob)
+
+        # Update or reset the system, depending on whether the move is accepted or rejected
+        if acc_prob < np.random.rand() or np.isnan(acc_prob):
+            # Need to revert the changes made if the move is to be rejected
+            self.adjustSpecificWater(atom_indices, 1.0)
+            self.context.setPositions(positions_old)
+            self.context.setVelocities(velocities_old)
+            self.positions = positions_old
+            self.velocities = velocities_old
+            self.water_status = water_status_old
+        else:
+            # Update some variables if move is accepted
+            self.setWaterStatus(resid, 0)
+            self.n_accepted += 1
+            # state = self.context.getState(getPositions=True, enforcePeriodicBox=True, getVelocities=True)
+            self.positions = state.getPositions(asNumpy=True)
+            self.velocities = state.getVelocities(asNumpy=True)
 
         self.compound_integrator.setCurrentIntegrator(0)
         self.n_moves += 1
